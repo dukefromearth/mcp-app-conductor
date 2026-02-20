@@ -1,0 +1,13 @@
+{
+  "name": "@mcp-app-conductor/proving-ground",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "scenario:a": "echo \"TODO: wire PDF -> Say scenario\"",
+    "scenario:b": "echo \"TODO: wire Video -> Transcript scenario\""
+  },
+  "dependencies": {
+    "@mcp-app-conductor/contracts": "workspace:*",
+    "mcp-app-conductor": "workspace:*"
+  }
+}

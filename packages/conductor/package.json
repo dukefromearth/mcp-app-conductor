@@ -1,0 +1,40 @@
+{
+  "name": "mcp-app-conductor",
+  "version": "0.1.0",
+  "description": "Conductor runtime for coordinating MCP apps on a shared canvas",
+  "type": "module",
+  "main": "./dist/mcp-app-conductor.cjs",
+  "module": "./dist/mcp-app-conductor.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/mcp-app-conductor.js",
+      "require": "./dist/mcp-app-conductor.cjs"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json && vite build",
+    "dev": "vite",
+    "preview": "vite preview",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/dukefromearth/mcp-app-conductor.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/dukefromearth/mcp-app-conductor/issues"
+  },
+  "homepage": "https://github.com/dukefromearth/mcp-app-conductor#readme",
+  "devDependencies": {
+    "typescript": "^5.9.3",
+    "vite": "^7.3.1"
+  }
+}
