@@ -1,5 +1,11 @@
 {
+  "contractVersion": "1.0.0",
+  "kind": "module.profile",
+  "extensions": {},
   "manifest": {
+    "contractVersion": "1.0.0",
+    "kind": "module.manifest",
+    "extensions": {},
     "id": "pdf",
     "version": "2.0.0",
     "displayName": "PDF Server",
@@ -18,6 +24,9 @@
     "inputs": [],
     "stateResources": [],
     "runtime": {
+      "contractVersion": "1.0.0",
+      "kind": "module.runtimeProfile",
+      "extensions": {},
       "transportMode": "stateless",
       "stateModel": "ephemeral",
       "affinity": "none",
@@ -29,6 +38,9 @@
     }
   },
   "runtime": {
+    "contractVersion": "1.0.0",
+    "kind": "module.runtimeProfile",
+    "extensions": {},
     "transportMode": "stateless",
     "stateModel": "ephemeral",
     "affinity": "none",

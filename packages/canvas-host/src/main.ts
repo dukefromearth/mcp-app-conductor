@@ -7,11 +7,16 @@ import {
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
 import {
+  CONTRACT_VERSION,
   displayModeSchema,
+  modulePortSpecifierSchema,
   moduleProfileSchema,
+  moduleToolArgSpecifierSchema,
+  mountArgsSchema,
   swapModeSchema,
   type DisplayMode,
   type EventEnvelope,
+  type ValidationIssue,
 } from '@mcp-app-conductor/contracts';
 import {
   createConductor,
@@ -38,7 +43,13 @@ const servers = {
 };
 
 const pdfProfile = moduleProfileSchema.parse({
+  contractVersion: CONTRACT_VERSION,
+  kind: 'module.profile',
+  extensions: {},
   manifest: {
+    contractVersion: CONTRACT_VERSION,
+    kind: 'module.manifest',
+    extensions: {},
     id: 'pdf',
     version: '2.0.0',
     displayName: 'PDF Server',
@@ -47,6 +58,9 @@ const pdfProfile = moduleProfileSchema.parse({
     inputs: [],
     stateResources: [],
     runtime: {
+      contractVersion: CONTRACT_VERSION,
+      kind: 'module.runtimeProfile',
+      extensions: {},
       transportMode: 'stateless',
       stateModel: 'ephemeral',
       affinity: 'none',
@@ -54,6 +68,9 @@ const pdfProfile = moduleProfileSchema.parse({
     },
   },
   runtime: {
+    contractVersion: CONTRACT_VERSION,
+    kind: 'module.runtimeProfile',
+    extensions: {},
     transportMode: 'stateless',
     stateModel: 'ephemeral',
     affinity: 'none',
@@ -66,7 +83,13 @@ const pdfProfile = moduleProfileSchema.parse({
 });
 
 const sayProfile = moduleProfileSchema.parse({
+  contractVersion: CONTRACT_VERSION,
+  kind: 'module.profile',
+  extensions: {},
   manifest: {
+    contractVersion: CONTRACT_VERSION,
+    kind: 'module.manifest',
+    extensions: {},
     id: 'say',
     version: '1.0.0',
     displayName: 'Say Demo',
@@ -75,6 +98,9 @@ const sayProfile = moduleProfileSchema.parse({
     inputs: [{ name: 'text', description: 'Text input routed to say(text)' }],
     stateResources: [],
     runtime: {
+      contractVersion: CONTRACT_VERSION,
+      kind: 'module.runtimeProfile',
+      extensions: {},
       transportMode: 'stateless',
       stateModel: 'ephemeral',
       affinity: 'none',
@@ -82,6 +108,9 @@ const sayProfile = moduleProfileSchema.parse({
     },
   },
   runtime: {
+    contractVersion: CONTRACT_VERSION,
+    kind: 'module.runtimeProfile',
+    extensions: {},
     transportMode: 'stateless',
     stateModel: 'ephemeral',
     affinity: 'none',
@@ -207,6 +236,28 @@ function laneEl(mode: DisplayMode): HTMLDivElement {
   }
 
   return target;
+}
+
+function toValidationIssues(error: { issues: Array<{ path: Array<string | number>; message: string; code: string }> }): ValidationIssue[] {
+  return error.issues.map((issue) => ({
+    path: issue.path.length > 0 ? issue.path.join('.') : '<root>',
+    message: issue.message,
+    code: issue.code,
+  }));
+}
+
+function reportHostValidationOutcome(
+  boundary: 'host.mountArgs' | 'host.wireInput',
+  message: string,
+  issues: ValidationIssue[],
+): void {
+  conductor.reportValidationOutcome({
+    boundary,
+    mode: 'enforce',
+    ok: false,
+    message,
+    issues,
+  });
 }
 
 async function getOrCreateHostClient(moduleId: string): Promise<Client> {
@@ -376,36 +427,86 @@ mountForm.addEventListener('submit', async (event) => {
   const moduleId = mountModule.value;
   const toolName = mountTool.value;
   const parsedMountPoint = displayModeSchema.parse(mountPoint.value);
-  const args = JSON.parse(mountArgs.value || '{}') as Record<string, unknown>;
+  let parsedJson: unknown;
+  try {
+    parsedJson = JSON.parse(mountArgs.value || '{}');
+  } catch {
+    const issues: ValidationIssue[] = [{
+      path: '<root>',
+      message: 'Tool args must be valid JSON.',
+      code: 'invalid_json',
+    }];
+    reportHostValidationOutcome('host.mountArgs', 'Mount args parsing failed.', issues);
+    console.error('Mount args parsing failed.');
+    return;
+  }
 
-  const result = await conductor.mountView({
-    moduleId,
-    toolName,
-    mountPoint: parsedMountPoint,
-    args,
-  });
+  const parsedArgs = mountArgsSchema.safeParse(parsedJson);
+  if (!parsedArgs.success) {
+    reportHostValidationOutcome(
+      'host.mountArgs',
+      'Mount args validation failed.',
+      toValidationIssues(parsedArgs.error),
+    );
+    console.error('Mount args validation failed.');
+    return;
+  }
 
-  await mountMcpApp(moduleId, result, args);
-  renderState();
+  const args = parsedArgs.data;
+
+  try {
+    const result = await conductor.mountView({
+      moduleId,
+      toolName,
+      mountPoint: parsedMountPoint,
+      args,
+    });
+
+    await mountMcpApp(moduleId, result, args);
+    renderState();
+  } catch (error) {
+    console.error(error instanceof Error ? error.message : String(error));
+  }
 });
 
 wireForm.addEventListener('submit', async (event) => {
   event.preventDefault();
 
-  const [fromModuleId, fromPort] = wireFrom.value.split(':');
-  const [toModuleId, toTool, toArg] = wireTo.value.split(':');
+  const fromParsed = modulePortSpecifierSchema.safeParse(wireFrom.value);
+  const toParsed = moduleToolArgSpecifierSchema.safeParse(wireTo.value);
 
-  if (!fromModuleId || !fromPort || !toModuleId || !toTool || !toArg) {
-    throw new Error('Wire format is invalid. Expected module:port and module:tool:arg.');
+  if (!fromParsed.success || !toParsed.success) {
+    const issues: ValidationIssue[] = [];
+    if (!fromParsed.success) {
+      issues.push(...toValidationIssues(fromParsed.error));
+    }
+    if (!toParsed.success) {
+      issues.push(...toValidationIssues(toParsed.error));
+    }
+
+    reportHostValidationOutcome(
+      'host.wireInput',
+      'Wire input validation failed. Expected module:port and module:tool:arg.',
+      issues,
+    );
+    console.error('Wire input validation failed.');
+    return;
   }
 
-  conductor.connectPorts({
-    from: { moduleId: fromModuleId, port: fromPort },
-    to: { moduleId: toModuleId, tool: toTool, arg: toArg },
-    enabled: true,
-  });
+  const [fromModuleId, fromPort] = fromParsed.data.split(':');
+  const [toModuleId, toTool, toArg] = toParsed.data.split(':');
 
-  renderState();
+  try {
+    conductor.connectPorts({
+      from: { moduleId: fromModuleId, port: fromPort },
+      to: { moduleId: toModuleId, tool: toTool, arg: toArg },
+      enabled: true,
+    });
+
+    renderState();
+  } catch (error) {
+    console.error(error instanceof Error ? error.message : String(error));
+  }
 });
 
 swapForm.addEventListener('submit', async (event) => {

@@ -1,6 +1,6 @@
 # The Living Doc
 
-Last updated: 2026-02-20
+Last updated: 2026-02-21
 
 ## Current System Snapshot
 
@@ -25,9 +25,10 @@ flowchart LR
   end
 
   subgraph Contracts[Contracts Package]
-    MAN[Module Manifest + Runtime Profile]
-    EVT[Event Envelope]
-    EDGE[Wiring Edge]
+    CORE[Contract Metadata + Versioning]
+    ART[Artifact Schemas]
+    VAL[Validation Policy + Outcome]
+    RUN[Runtime Config Schema]
   end
 
   UI --> Conductor
@@ -43,7 +44,11 @@ flowchart LR
 ## What Exists Now
 
 - `packages/contracts`
-: Zod contracts for manifests, runtime profile, swap modes, event envelope, wiring edge, mounted views, and conductor state surface.
+: Contract Spine v1 contracts are live:
+  - `core`: semver `contractVersion` checks (supported major `1`), `kind`, `extensions`
+  - `artifacts`: manifests/runtime profiles/module profiles/events/wiring/state schemas
+  - `validation`: validation modes, boundaries, policy, issues, outcomes
+  - `runtime-config`: `canvas.runtimeConfig` and `canvas.persistedModule` schemas + defaults
 
 - `packages/conductor`
 : Runtime API with:
@@ -54,16 +59,21 @@ flowchart LR
   - `connectPorts(...)`
   - `swapModule(...)`
   - `emitPortEvent(...)`
+  - `reportValidationOutcome(...)`
   - `subscribe(...)`
   - `getState()` / `getTrace()`
+  - Config accepts `validationPolicy`
+  - Events are emitted as metadata-rich envelopes (`contractVersion`, `kind`, `extensions`)
 
 - `packages/canvas-host`
 : Browser host with:
-  - multi-server connect (`pdf`, `say`),
-  - mount/wire/swap controls,
-  - lane-based canvas (`main/sidebar/overlay/pip/fullscreen`),
-  - AppBridge-based mounted view initialization,
-  - trace + inventory overlay.
+  - multi-server connect (`pdf`, `say`)
+  - mount/wire/swap controls
+  - lane-based canvas (`main/sidebar/overlay/pip/fullscreen`)
+  - AppBridge-based mounted view initialization
+  - trace + inventory overlay
+  - schema-enforced host ingress for mount args and wire inputs
+  - host boundary validation outcomes routed into conductor trace
 
 - `packages/cli`
 : `mcp-canvas` commands:
@@ -73,9 +83,12 @@ flowchart LR
   - `wire`
   - `swap`
   - `trace`
+  - CLI ingress is schema-enforced for runtime config, profile JSON, and wiring flags
+  - validation failures print normalized JSON outcomes to stderr and exit `1`
+  - runtime config writes metadata-rich shape + validation policy
 
 - `examples/proving-ground`
-: protocol probe, module profiles, and `scenario:a` (`read-listen`) runner.
+: protocol probe, Contract Spine v1 module profiles, and `scenario:a` (`read-listen`) runner.
 
 ## Transport Baseline
 
@@ -85,6 +98,59 @@ flowchart LR
   - `streamable_http_path='/mcp'`
   - `stateless_http=True`
   - constructor-driven host/port.
+
+## Contract Spine v1
+
+Contract Spine v1 is intentionally hard-break and forward-looking.
+
+### Required Metadata
+
+These artifacts require:
+
+- `contractVersion` (semver string; supported major `1`)
+- `kind` (artifact-specific literal)
+- `extensions` (namespaced extension bag)
+
+Artifact kinds:
+
+- `module.manifest`
+- `module.runtimeProfile`
+- `module.profile`
+- `conductor.event`
+- `conductor.wiringEdge`
+- `canvas.runtimeConfig`
+- `canvas.persistedModule`
+
+### Boundary Validation Behavior
+
+Default policy is hybrid strict:
+
+- `cli.runtimeConfig`: enforce
+- `cli.profile`: enforce
+- `cli.flags`: enforce
+- `host.mountArgs`: enforce
+- `host.wireInput`: enforce
+- `conductor.portSignal`: warn
+
+Behavior matrix:
+
+- `enforce`: reject operation
+- `warn`: skip invalid dynamic path and emit `validation.outcome`
+- `observe`: record-only mode (defined, not defaulted)
+
+Validation outcomes are represented as typed `validation.outcome` events where conductor trace is available.
+
+### Migration Note
+
+Older profile/runtime JSON without required metadata no longer parse.
+
+Minimum runtime config shape now includes:
+
+- `contractVersion`, `kind`, `extensions`
+- `modules`
+- `wiring`
+- `traceFile`
+- `validationPolicy`
 
 ## State Model
 
@@ -96,7 +162,7 @@ Canonical state is event-driven and in-memory:
 - `views` (mounted instances)
 - `events` (flight timeline)
 
-Flight recorder is append-only JSONL lines from event envelopes.
+Flight recorder is append-only JSONL lines from event envelopes. Validation failures may appear as `validation.outcome` events.
 
 ## Swap Policy Matrix
 
@@ -124,19 +190,20 @@ All fallback decisions emit trace events (`swap.plan`, `swap.fallback`, `swap.ap
 ## Conformance Workflow
 
 1. Start ext-app servers (`pdf` on `3001`, `say` on `3002`)
-2. Run CLI probe:
+2. Ensure runtime config is v1 shape (or remove old `.mcp-canvas-runtime.json` and let CLI regenerate)
+3. Run CLI probe:
 
 ```bash
 node ./packages/cli/dist/index.js probe
 ```
 
-3. Run proving-ground probe:
+4. Run proving-ground probe:
 
 ```bash
 pnpm --filter @mcp-app-conductor/proving-ground probe
 ```
 
-4. Run scenario A:
+5. Run scenario A:
 
 ```bash
 pnpm --filter @mcp-app-conductor/proving-ground scenario:a
@@ -147,3 +214,5 @@ pnpm --filter @mcp-app-conductor/proving-ground scenario:a
 - Canvas host currently mounts views and runs AppBridge, but UX is still prototype-grade.
 - Swap behavior remaps wiring and traces decision/fallback; deep runtime state migration is not implemented.
 - Video/transcript scenarios remain planned.
+- No auto-migration helper for legacy `.mcp-canvas-runtime.json`; legacy files must be upgraded or recreated.
+- Event payload typing is still broad for many event types (no full discriminated union yet).

@@ -1,4 +1,4 @@
-import type { EventEnvelope, MountedView, WiringEdge } from '@mcp-app-conductor/contracts';
+import type { EventEnvelope, MountedView, ValidationOutcome, WiringEdge } from '@mcp-app-conductor/contracts';
 import type { CapabilityInventory, ConductorSnapshot, RegisteredModule } from '../types';
 
 export interface ConductorEventPayloadMap {
@@ -9,6 +9,7 @@ export interface ConductorEventPayloadMap {
   'wiring.connected': { edge: WiringEdge };
   'view.mounted': { view: MountedView };
   'swap.applied': { fromModuleId: string; toModuleId: string; edgeIds: string[] };
+  'validation.outcome': ValidationOutcome;
 }
 
 function pushEvent(events: EventEnvelope[], event: EventEnvelope): EventEnvelope[] {
@@ -90,6 +91,9 @@ export function reduceState(state: ConductorSnapshot, event: EventEnvelope): Con
       break;
     }
     case 'swap.applied': {
+      break;
+    }
+    case 'validation.outcome': {
       break;
     }
     default:

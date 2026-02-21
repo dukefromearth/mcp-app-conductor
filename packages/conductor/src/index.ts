@@ -1,14 +1,21 @@
 import {
+  CONTRACT_VERSION,
+  defaultValidationPolicy,
   eventEnvelopeSchema,
   moduleConnectionSchema,
   moduleManifestSchema,
   moduleRuntimeProfileSchema,
   mountedViewSchema,
+  portSignalSchema,
   swapModeSchema,
-  swapSupportSchema,
+  validationOutcomeSchema,
+  validationPolicySchema,
   wiringEdgeSchema,
   type EventEnvelope,
   type ModuleRuntimeProfile,
+  type ValidationBoundary,
+  type ValidationPolicy,
+  type ValidationIssue,
   type SwapMode,
   type WiringEdge,
 } from '@mcp-app-conductor/contracts';
@@ -27,6 +34,7 @@ import type {
   RegisteredModule,
   SwapPlan,
   SwapRequest,
+  ValidationOutcomeInput,
 } from './types';
 import type { JsonlRecorder } from './trace/jsonl-recorder';
 import { getAdapter, type TransportAdapter } from './runtime/transport-adapter';
@@ -35,15 +43,19 @@ export interface CreateConductorConfig {
   recorder?: JsonlRecorder;
   adapters?: TransportAdapter[];
   implementationName?: string;
+  validationPolicy?: ValidationPolicy;
 }
 
 export interface Conductor {
   registerModule(request: ModuleRegistrationRequest): Promise<RegisteredModule>;
   discoverCapabilities(moduleId?: string): Promise<Record<string, CapabilityInventory>>;
   mountView(request: MountViewRequest): Promise<MountedViewResult>;
-  connectPorts(edge: Omit<WiringEdge, 'id'> & { id?: string }): WiringEdge;
+  connectPorts(
+    edge: Omit<WiringEdge, 'id' | 'contractVersion' | 'kind' | 'extensions'> & { id?: string }
+  ): WiringEdge;
   swapModule(request: SwapRequest): Promise<SwapPlan>;
   emitPortEvent(signal: PortSignal): Promise<void>;
+  reportValidationOutcome(outcome: ValidationOutcomeInput): void;
   subscribe(listener: ConductorEventListener): () => void;
   getState(): ConductorSnapshot;
   getTrace(limit?: number): EventEnvelope[];
@@ -88,11 +100,32 @@ function getHtmlFromReadResourceResult(result: { contents?: Array<Record<string,
   };
 }
 
+function toValidationIssues(error: { issues: Array<{ path: Array<string | number>; message: string; code: string }> }): ValidationIssue[] {
+  return error.issues.map((issue) => ({
+    path: issue.path.length > 0 ? issue.path.join('.') : '<root>',
+    message: issue.message,
+    code: issue.code,
+  }));
+}
+
+function actorForBoundary(boundary: ValidationBoundary): EventEnvelope['source']['actor'] {
+  if (boundary.startsWith('host.')) {
+    return 'host';
+  }
+
+  if (boundary.startsWith('conductor.')) {
+    return 'conductor';
+  }
+
+  return 'system';
+}
+
 export function createConductor(config: CreateConductorConfig = {}): Conductor {
   const store = new ConductorStore();
   const recorder = config.recorder;
   const moduleClients = new Map<string, ModuleClient>();
   const adapters = new Map<string, TransportAdapter>((config.adapters ?? []).map((adapter) => [adapter.id, adapter]));
+  const validationPolicy = validationPolicySchema.parse(config.validationPolicy ?? defaultValidationPolicy);
 
   function pushEvent(
     type: string,
@@ -101,6 +134,9 @@ export function createConductor(config: CreateConductorConfig = {}): Conductor {
     traceId = createId('trace'),
   ): EventEnvelope {
     const event = eventEnvelopeSchema.parse({
+      contractVersion: CONTRACT_VERSION,
+      kind: 'conductor.event',
+      extensions: {},
       eventId: createId('evt'),
       timestamp: new Date().toISOString(),
       traceId,
@@ -112,6 +148,16 @@ export function createConductor(config: CreateConductorConfig = {}): Conductor {
     recorder?.record(event);
     store.dispatch(event);
     return event;
+  }
+
+  function reportValidationOutcome(outcomeInput: ValidationOutcomeInput): void {
+    const outcome = validationOutcomeSchema.parse(outcomeInput);
+    const source = {
+      actor: actorForBoundary(outcome.boundary),
+      operation: `validation:${outcome.boundary}`,
+    } as const;
+
+    pushEvent('validation.outcome', outcome, source, createId('trace'));
   }
 
   function getModule(moduleId: string): RegisteredModule {
@@ -281,8 +327,13 @@ export function createConductor(config: CreateConductorConfig = {}): Conductor {
     };
   }
 
-  function connectPorts(edgeInput: Omit<WiringEdge, 'id'> & { id?: string }): WiringEdge {
+  function connectPorts(
+    edgeInput: Omit<WiringEdge, 'id' | 'contractVersion' | 'kind' | 'extensions'> & { id?: string }
+  ): WiringEdge {
     const edge = wiringEdgeSchema.parse({
+      contractVersion: CONTRACT_VERSION,
+      kind: 'conductor.wiringEdge',
+      extensions: {},
       ...edgeInput,
       id: edgeInput.id ?? createId('edge'),
     });
@@ -379,19 +430,41 @@ export function createConductor(config: CreateConductorConfig = {}): Conductor {
   }
 
   async function emitPortEvent(signal: PortSignal): Promise<void> {
-    const traceId = signal.traceId ?? createId('trace');
+    const validationMode = validationPolicy['conductor.portSignal'];
+    const parsedSignal = portSignalSchema.safeParse(signal);
+
+    if (!parsedSignal.success) {
+      const issues = toValidationIssues(parsedSignal.error);
+      const outcome = validationOutcomeSchema.parse({
+        boundary: 'conductor.portSignal',
+        mode: validationMode,
+        ok: false,
+        message: 'Port signal validation failed.',
+        issues,
+      });
+      reportValidationOutcome(outcome);
+
+      if (validationMode === 'enforce') {
+        throw new Error('Port signal validation failed.');
+      }
+
+      return;
+    }
+
+    const validatedSignal = parsedSignal.data;
+    const traceId = validatedSignal.traceId ?? createId('trace');
 
     const event = pushEvent(
       'port.event',
       {
-        moduleId: signal.moduleId,
-        port: signal.port,
-        data: signal.data,
+        moduleId: validatedSignal.moduleId,
+        port: validatedSignal.port,
+        data: validatedSignal.data,
       },
       {
         actor: 'module',
-        moduleId: signal.moduleId,
-        operation: `port:${signal.port}`,
+        moduleId: validatedSignal.moduleId,
+        operation: `port:${validatedSignal.port}`,
       },
       traceId,
     );
@@ -455,6 +528,7 @@ export function createConductor(config: CreateConductorConfig = {}): Conductor {
     connectPorts,
     swapModule,
     emitPortEvent,
+    reportValidationOutcome,
     subscribe,
     getState,
     getTrace,
@@ -473,6 +547,7 @@ export type {
   RegisteredModule,
   SwapPlan,
   SwapRequest,
+  ValidationOutcomeInput,
 } from './types';
 
 export { JsonlRecorder } from './trace/jsonl-recorder';

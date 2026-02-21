@@ -3,12 +3,24 @@
 import { appendFile, readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import {
+  CONTRACT_VERSION,
+  createDefaultRuntimeConfig,
+  defaultValidationPolicy,
   moduleManifestSchema,
+  modulePortSpecifierSchema,
   moduleProfileSchema,
+  moduleToolArgSpecifierSchema,
+  persistedModuleSchema,
+  runtimeConfigSchema,
   swapModeSchema,
-  wiringEdgeSchema,
+  validationOutcomeSchema,
   type ModuleManifest,
   type ModuleRuntimeProfile,
+  type RuntimeConfig,
+  type ValidationBoundary,
+  type ValidationIssue,
+  type ValidationMode,
+  type ValidationOutcome,
   type WiringEdge,
 } from '@mcp-app-conductor/contracts';
 import { createConductor, JsonlRecorder } from 'mcp-app-conductor';
@@ -16,20 +28,6 @@ import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
 
 type CommandName = 'help' | 'dev' | 'probe' | 'connect' | 'wire' | 'swap' | 'trace';
-
-interface PersistedModule {
-  id: string;
-  url: string;
-  manifest: ModuleManifest;
-  profile?: ModuleRuntimeProfile;
-  transportAdapterId?: string;
-}
-
-interface RuntimeConfig {
-  modules: Record<string, PersistedModule>;
-  wiring: WiringEdge[];
-  traceFile: string;
-}
 
 interface ProbeReport {
   url: string;
@@ -41,6 +39,16 @@ interface ProbeReport {
   callOk?: boolean;
   resourceReadOk?: boolean;
   errors: string[];
+}
+
+class CliValidationError extends Error {
+  readonly outcome: ValidationOutcome;
+
+  constructor(outcome: ValidationOutcome) {
+    super(outcome.message);
+    this.name = 'CliValidationError';
+    this.outcome = outcome;
+  }
 }
 
 const runtimeFile = path.resolve(process.cwd(), '.mcp-canvas-runtime.json');
@@ -69,27 +77,80 @@ function getFlag(args: string[], name: string): string | undefined {
   return args[idx + 1];
 }
 
-async function loadRuntime(): Promise<RuntimeConfig> {
-  try {
-    const text = await readFile(runtimeFile, 'utf8');
-    const parsed = JSON.parse(text) as RuntimeConfig;
+function toValidationIssues(error: { issues: Array<{ path: Array<string | number>; message: string; code: string }> }): ValidationIssue[] {
+  return error.issues.map((issue) => ({
+    path: issue.path.length > 0 ? issue.path.join('.') : '<root>',
+    message: issue.message,
+    code: issue.code,
+  }));
+}
 
-    return {
-      modules: parsed.modules ?? {},
-      wiring: (parsed.wiring ?? []).map((edge) => wiringEdgeSchema.parse(edge)),
-      traceFile: parsed.traceFile ?? defaultTraceFile,
-    };
-  } catch {
-    return {
-      modules: {},
-      wiring: [],
-      traceFile: defaultTraceFile,
-    };
+function createValidationOutcome(
+  boundary: ValidationBoundary,
+  mode: ValidationMode,
+  message: string,
+  issues: ValidationIssue[] = [],
+): ValidationOutcome {
+  return validationOutcomeSchema.parse({
+    boundary,
+    mode,
+    ok: false,
+    message,
+    issues,
+  });
+}
+
+function createValidationError(
+  boundary: ValidationBoundary,
+  mode: ValidationMode,
+  message: string,
+  issues: ValidationIssue[] = [],
+): CliValidationError {
+  return new CliValidationError(createValidationOutcome(boundary, mode, message, issues));
+}
+
+async function loadRuntime(): Promise<RuntimeConfig> {
+  let text: string;
+
+  try {
+    text = await readFile(runtimeFile, 'utf8');
+  } catch (error) {
+    const code = (error as NodeJS.ErrnoException).code;
+    if (code === 'ENOENT') {
+      return createDefaultRuntimeConfig(defaultTraceFile);
+    }
+
+    throw error;
   }
+
+  let parsedJson: unknown;
+  try {
+    parsedJson = JSON.parse(text);
+  } catch {
+    throw createValidationError(
+      'cli.runtimeConfig',
+      defaultValidationPolicy['cli.runtimeConfig'],
+      `Runtime config at ${runtimeFile} is not valid JSON.`,
+      [{ path: '<root>', message: 'Invalid JSON document.', code: 'invalid_json' }],
+    );
+  }
+
+  const parsed = runtimeConfigSchema.safeParse(parsedJson);
+  if (!parsed.success) {
+    throw createValidationError(
+      'cli.runtimeConfig',
+      defaultValidationPolicy['cli.runtimeConfig'],
+      `Runtime config at ${runtimeFile} failed schema validation.`,
+      toValidationIssues(parsed.error),
+    );
+  }
+
+  return parsed.data;
 }
 
 async function saveRuntime(runtime: RuntimeConfig): Promise<void> {
-  await writeFile(runtimeFile, JSON.stringify(runtime, null, 2));
+  const parsed = runtimeConfigSchema.parse(runtime);
+  await writeFile(runtimeFile, JSON.stringify(parsed, null, 2));
 }
 
 async function createHydratedConductor(runtime: RuntimeConfig) {
@@ -99,7 +160,7 @@ async function createHydratedConductor(runtime: RuntimeConfig) {
     },
   });
 
-  const conductor = createConductor({ recorder });
+  const conductor = createConductor({ recorder, validationPolicy: runtime.validationPolicy });
 
   const moduleEntries = Object.values(runtime.modules);
   for (const entry of moduleEntries) {
@@ -123,21 +184,33 @@ async function createHydratedConductor(runtime: RuntimeConfig) {
   return conductor;
 }
 
-function parseModulePort(value: string): { moduleId: string; port: string } {
-  const [moduleId, port] = value.split(':');
-  if (!moduleId || !port) {
-    throw new Error(`Invalid --from value \"${value}\". Expected module:port.`);
+function parseModulePort(value: string, mode: ValidationMode): { moduleId: string; port: string } {
+  const parsed = modulePortSpecifierSchema.safeParse(value);
+  if (!parsed.success) {
+    throw createValidationError(
+      'cli.flags',
+      mode,
+      `Invalid --from value "${value}". Expected module:port.`,
+      toValidationIssues(parsed.error),
+    );
   }
 
+  const [moduleId, port] = parsed.data.split(':');
   return { moduleId, port };
 }
 
-function parseModuleToolArg(value: string): { moduleId: string; tool: string; arg: string } {
-  const [moduleId, tool, arg] = value.split(':');
-  if (!moduleId || !tool || !arg) {
-    throw new Error(`Invalid --to value \"${value}\". Expected module:tool:arg.`);
+function parseModuleToolArg(value: string, mode: ValidationMode): { moduleId: string; tool: string; arg: string } {
+  const parsed = moduleToolArgSpecifierSchema.safeParse(value);
+  if (!parsed.success) {
+    throw createValidationError(
+      'cli.flags',
+      mode,
+      `Invalid --to value "${value}". Expected module:tool:arg.`,
+      toValidationIssues(parsed.error),
+    );
   }
 
+  const [moduleId, tool, arg] = parsed.data.split(':');
   return { moduleId, tool, arg };
 }
 
@@ -241,6 +314,55 @@ async function runProbe(url: string): Promise<ProbeReport> {
   return report;
 }
 
+async function readModuleProfile(profilePath: string, mode: ValidationMode) {
+  let profileText: string;
+  try {
+    profileText = await readFile(path.resolve(process.cwd(), profilePath), 'utf8');
+  } catch (error) {
+    throw createValidationError(
+      'cli.profile',
+      mode,
+      `Unable to read profile file "${profilePath}".`,
+      [{ path: '<root>', message: error instanceof Error ? error.message : String(error), code: 'read_error' }],
+    );
+  }
+
+  let profileJson: unknown;
+  try {
+    profileJson = JSON.parse(profileText);
+  } catch {
+    throw createValidationError(
+      'cli.profile',
+      mode,
+      `Profile file "${profilePath}" is not valid JSON.`,
+      [{ path: '<root>', message: 'Invalid JSON document.', code: 'invalid_json' }],
+    );
+  }
+
+  const parsedProfile = moduleProfileSchema.safeParse(profileJson);
+  if (!parsedProfile.success) {
+    throw createValidationError(
+      'cli.profile',
+      mode,
+      `Profile file "${profilePath}" failed schema validation.`,
+      toValidationIssues(parsedProfile.error),
+    );
+  }
+
+  return parsedProfile.data;
+}
+
+function defaultManifest(id: string): ModuleManifest {
+  return moduleManifestSchema.parse({
+    contractVersion: CONTRACT_VERSION,
+    kind: 'module.manifest',
+    extensions: {},
+    id,
+    version: '0.1.0',
+    displayName: id,
+  });
+}
+
 async function run(): Promise<void> {
   const [commandArg = 'help', ...args] = process.argv.slice(2);
   const command = (['help', 'dev', 'probe', 'connect', 'wire', 'swap', 'trace'] as const)
@@ -271,9 +393,12 @@ async function run(): Promise<void> {
     return;
   }
 
+  const runtime = await loadRuntime();
+  const flagsMode = runtime.validationPolicy['cli.flags'];
+  const profileMode = runtime.validationPolicy['cli.profile'];
+
   if (command === 'trace') {
     const tail = Number.parseInt(getFlag(args, '--tail') ?? '20', 10);
-    const runtime = await loadRuntime();
 
     try {
       const text = await readFile(runtime.traceFile, 'utf8');
@@ -287,7 +412,6 @@ async function run(): Promise<void> {
     return;
   }
 
-  const runtime = await loadRuntime();
   const conductor = await createHydratedConductor(runtime);
   try {
     if (command === 'dev') {
@@ -313,35 +437,38 @@ async function run(): Promise<void> {
       const profilePath = getFlag(args, '--profile');
 
       if (!id || !url) {
-        throw new Error('connect requires --id and --url');
+        throw createValidationError(
+          'cli.flags',
+          flagsMode,
+          'connect requires --id and --url',
+          [{ path: '<root>', message: 'Missing required flags.', code: 'missing_flag' }],
+        );
       }
 
       let manifest: ModuleManifest;
       let profile: ModuleRuntimeProfile | undefined;
 
       if (profilePath) {
-        const profileText = await readFile(path.resolve(process.cwd(), profilePath), 'utf8');
-        const parsedProfile = moduleProfileSchema.parse(JSON.parse(profileText));
+        const parsedProfile = await readModuleProfile(profilePath, profileMode);
         manifest = moduleManifestSchema.parse(parsedProfile.manifest);
         profile = parsedProfile.runtime;
       } else {
-        manifest = moduleManifestSchema.parse({
-          id,
-          version: '0.1.0',
-          displayName: id,
-        });
+        manifest = defaultManifest(id);
         profile = undefined;
       }
 
       await conductor.registerModule({ id, url, manifest, profile });
       const capabilities = await conductor.discoverCapabilities(id);
 
-      runtime.modules[id] = {
+      runtime.modules[id] = persistedModuleSchema.parse({
+        contractVersion: CONTRACT_VERSION,
+        kind: 'canvas.persistedModule',
+        extensions: {},
         id,
         url,
         manifest,
         profile,
-      };
+      });
 
       runtime.wiring = conductor.getState().wiring;
       await saveRuntime(runtime);
@@ -356,11 +483,16 @@ async function run(): Promise<void> {
       const id = getFlag(args, '--id');
 
       if (!from || !to) {
-        throw new Error('wire requires --from module:port and --to module:tool:arg');
+        throw createValidationError(
+          'cli.flags',
+          flagsMode,
+          'wire requires --from module:port and --to module:tool:arg',
+          [{ path: '<root>', message: 'Missing required flags.', code: 'missing_flag' }],
+        );
       }
 
-      const fromParsed = parseModulePort(from);
-      const toParsed = parseModuleToolArg(to);
+      const fromParsed = parseModulePort(from, flagsMode);
+      const toParsed = parseModuleToolArg(to, flagsMode);
 
       const edge = conductor.connectPorts({
         id,
@@ -389,7 +521,12 @@ async function run(): Promise<void> {
       const mode = swapModeSchema.parse(getFlag(args, '--mode') ?? 'auto');
 
       if (!fromModuleId || !toModuleId) {
-        throw new Error('swap requires --from and --to module ids');
+        throw createValidationError(
+          'cli.flags',
+          flagsMode,
+          'swap requires --from and --to module ids',
+          [{ path: '<root>', message: 'Missing required flags.', code: 'missing_flag' }],
+        );
       }
 
       const plan = await conductor.swapModule({ fromModuleId, toModuleId, mode });
@@ -405,6 +542,12 @@ async function run(): Promise<void> {
 }
 
 run().catch((error) => {
+  if (error instanceof CliValidationError) {
+    console.error(JSON.stringify(error.outcome, null, 2));
+    process.exit(1);
+    return;
+  }
+
   console.error(error instanceof Error ? error.message : String(error));
   process.exit(1);
 });

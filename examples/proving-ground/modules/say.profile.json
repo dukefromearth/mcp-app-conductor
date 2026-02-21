@@ -1,5 +1,11 @@
 {
+  "contractVersion": "1.0.0",
+  "kind": "module.profile",
+  "extensions": {},
   "manifest": {
+    "contractVersion": "1.0.0",
+    "kind": "module.manifest",
+    "extensions": {},
     "id": "say",
     "version": "1.0.0",
     "displayName": "Say Demo",
@@ -23,6 +29,9 @@
     ],
     "stateResources": [],
     "runtime": {
+      "contractVersion": "1.0.0",
+      "kind": "module.runtimeProfile",
+      "extensions": {},
       "transportMode": "stateless",
       "stateModel": "ephemeral",
       "affinity": "none",
@@ -34,6 +43,9 @@
     }
   },
   "runtime": {
+    "contractVersion": "1.0.0",
+    "kind": "module.runtimeProfile",
+    "extensions": {},
     "transportMode": "stateless",
     "stateModel": "ephemeral",
     "affinity": "none",

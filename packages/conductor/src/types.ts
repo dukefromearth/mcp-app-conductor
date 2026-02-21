@@ -6,6 +6,8 @@ import type {
   ModuleRuntimeProfile,
   MountedView,
   SwapMode,
+  ValidationOutcome,
+  ValidationPolicy,
   WiringEdge
 } from '@mcp-app-conductor/contracts';
 
@@ -96,6 +98,9 @@ export interface PortSignal {
   data: unknown;
   traceId?: string;
 }
+
+export type ValidationOutcomeInput = ValidationOutcome;
+export type ConductorValidationPolicy = ValidationPolicy;
 
 export interface ConductorEventListener {
   (event: EventEnvelope, state: ConductorSnapshot): void;

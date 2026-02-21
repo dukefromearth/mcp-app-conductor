@@ -39,7 +39,7 @@ Composable scenarios using upstream MCP Apps examples (PDF + Say + Video + Trans
 
 ## Current implementation status (Feb 2026)
 
-- `packages/contracts`: runtime profile + swap + wiring + event-envelope contracts are live.
+- `packages/contracts`: runtime profile + swap + wiring + event-envelope contracts are live, plus Contract Spine v1 metadata and boundary validation contracts (`contractVersion`, `kind`, `extensions`, validation policy/outcome, runtime config schema).
 - `packages/conductor`: event-sourced runtime APIs are implemented (`register`, `discover`, `mount`, `wire`, `swap`, `emitPortEvent`, `trace`).
 - `packages/canvas-host`: browser host now connects to PDF/Say, mounts MCP Apps with AppBridge, shows inventory, wiring, and trace overlays.
 - `packages/cli`: operational commands are implemented:
@@ -55,6 +55,16 @@ Composable scenarios using upstream MCP Apps examples (PDF + Say + Video + Trans
 
 The conductor baseline is **stateless Streamable HTTP** at the module boundary.  
 Session-oriented modules require a transport adapter and are rejected otherwise.
+
+### Contract Spine v1 baseline
+
+- Required metadata on contract artifacts: `contractVersion`, `kind`, `extensions`.
+- Supported `contractVersion` major: `1` (semver string format).
+- Default validation policy is hybrid strict:
+  - enforce: `cli.runtimeConfig`, `cli.profile`, `cli.flags`, `host.mountArgs`, `host.wireInput`
+  - warn: `conductor.portSignal`
+
+Migration note: existing profile/runtime JSON without Contract Spine v1 metadata will fail schema parsing and must be updated.
 
 ---
 
