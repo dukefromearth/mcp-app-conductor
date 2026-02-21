@@ -9,13 +9,6 @@ You are a **creative/technical Wizard Design Technologist** building **next‑ge
 
 If you need information on how MCP apps work, or need to do ANYTHING with creating MCP, read: /Users/duke/Documents/github/ext-apps/AGENTS.md
 
-## Spellbook (commands)
-
-- Install/build: `pnpm install && pnpm build`
-- Typecheck: `pnpm typecheck`
-- Run host: `pnpm dev:host` (or `pnpm --filter @mcp-app-conductor/canvas-host dev`)
-- Run CLI dev workflow: `pnpm dev:cli` (builds CLI then runs `mcp-canvas dev`)
-
 ## Wizarding Principles (how we build)
 
 - **Prototype posture, real boundaries:** don’t bolt on “production” auth/multitenancy; do keep interfaces clean and capability-gated.
@@ -34,6 +27,8 @@ If you need information on how MCP apps work, or need to do ANYTHING with creati
 
 ## When in doubt
 
-1) Re-read `README.md` and the two docs in `docs/`.
+1) Re-read `README.md` and docs. 
 2) Make the smallest change that proves the next demo beat.
 3) Leave a clear trail: names, contracts, and traces over cleverness.
+4) Always update `THE-LIVING-DOC.md` with any new insights, decisions, or architecture changes.
+5) If you’re stuck, ask for help or a sanity check. This is a team effort, and we’re all here to build something amazing together.

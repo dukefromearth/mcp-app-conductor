@@ -6,7 +6,11 @@
     "build": "pnpm -r --filter \"./packages/**\" build",
     "typecheck": "pnpm -r --filter \"./packages/**\" --if-present typecheck",
     "dev:host": "pnpm --filter @mcp-app-conductor/canvas-host dev",
-    "dev:cli": "pnpm --filter @mcp-app-conductor/cli build && node ./packages/cli/dist/index.js dev"
+    "dev:cli": "pnpm --filter @mcp-app-conductor/cli build && node ./packages/cli/dist/index.js dev",
+    "arch:deps": "bash ./scripts/architecture/generate-dependency-graph.sh",
+    "arch:deps:mermaid": "bash ./scripts/architecture/print-dependency-graph.sh",
+    "arch:deps:check": "pnpm exec depcruise --config tools/dependency-cruiser/depcruise.config.cjs packages examples/proving-ground",
+    "arch:deps:json": "bash ./scripts/architecture/generate-dependency-report.sh"
   },
   "devDependencies": {
     "dependency-cruiser": "^17.3.8"

@@ -3,3 +3,7 @@ node_modules
 dist
 packages/*/dist
 examples/*/dist
+docs/architecture/graphs/*.mmd
+docs/architecture/graphs/*.svg
+docs/architecture/graphs/*.html
+docs/architecture/graphs/*.json

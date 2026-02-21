@@ -27,7 +27,8 @@ module.exports = {
           '(^|/)[.][^/]+[.](?:js|cjs|mjs|ts|cts|mts|json)$',                  // dot files
           '[.]d[.]ts$',                                                       // TypeScript declaration files
           '(^|/)tsconfig[.]json$',                                            // TypeScript config
-          '(^|/)(?:babel|webpack)[.]config[.](?:js|cjs|mjs|ts|cts|mts|json)$' // other configs
+          '(^|/)(?:babel|webpack)[.]config[.](?:js|cjs|mjs|ts|cts|mts|json)$', // other configs
+          '(^|/)examples/proving-ground/scripts/probe-mcp-servers[.]ts$'      // intentional entry script
         ]
       },
       to: {},
@@ -147,7 +148,7 @@ module.exports = {
         'section of your package.json. If this module is development only - add it to the ' +
         'from.pathNot re of the not-to-dev-dep rule in the dependency-cruiser configuration',
       from: {
-        path: '^(packages)',
+        path: '^packages/[^/]+/src',
         pathNot: '[.](?:spec|test)[.](?:js|mjs|cjs|jsx|ts|mts|cts|tsx)$'
       },
       to: {
@@ -193,6 +194,72 @@ module.exports = {
           'npm-peer'
         ]
       }
+    },
+    {
+      name: 'contracts-foundation-only',
+      severity: 'error',
+      comment: 'contracts must stay foundational and not depend on conductor, host, cli, or examples.',
+      from: {
+        path: '^packages/contracts/src'
+      },
+      to: {
+        path: '^packages/(?:conductor|canvas-host|cli)/src|^examples/'
+      }
+    },
+    {
+      name: 'conductor-no-upstream-ui-cli',
+      severity: 'error',
+      comment: 'conductor must not depend on canvas-host, cli, or examples.',
+      from: {
+        path: '^packages/conductor/src'
+      },
+      to: {
+        path: '^packages/(?:canvas-host|cli)/src|^examples/'
+      }
+    },
+    {
+      name: 'host-no-cli-or-examples',
+      severity: 'error',
+      comment: 'canvas-host should not depend on cli or examples.',
+      from: {
+        path: '^packages/canvas-host/src'
+      },
+      to: {
+        path: '^packages/cli/src|^examples/'
+      }
+    },
+    {
+      name: 'cli-no-host-or-examples',
+      severity: 'error',
+      comment: 'cli should not depend on canvas-host or examples.',
+      from: {
+        path: '^packages/cli/src'
+      },
+      to: {
+        path: '^packages/canvas-host/src|^examples/'
+      }
+    },
+    {
+      name: 'examples-no-host-or-cli',
+      severity: 'error',
+      comment: 'examples should exercise contracts and conductor, not host or cli internals.',
+      from: {
+        path: '^examples/'
+      },
+      to: {
+        path: '^packages/(?:canvas-host|cli)/src'
+      }
+    },
+    {
+      name: 'no-src-to-dist',
+      severity: 'error',
+      comment: 'source code must not import local dist artifacts.',
+      from: {
+        path: '^packages/[^/]+/src'
+      },
+      to: {
+        path: '^packages/[^/]+/dist/'
+      }
     }
   ],
   options: {
@@ -203,10 +270,14 @@ module.exports = {
     },
 
     // Which modules to exclude
-    // exclude : {
-    //   // path: an array of regular expressions in strings to match against
-    //   path: '',
-    // },
+    exclude: {
+      // path: an array of regular expressions in strings to match against
+      path: [
+        '(^|/)dist/',
+        '(^|/)node_modules/',
+        '(^|/)docs/architecture/graphs/',
+      ],
+    },
 
     // Which modules to exclusively include (array of regular expressions in strings)
     // dependency-cruiser will skip everything that doesn't match this pattern
@@ -258,16 +329,10 @@ module.exports = {
     // if true leave symlinks untouched, otherwise use the realpath
     // preserveSymlinks: false,
 
-    // TypeScript project file ('tsconfig.json') to use for
-    // (1) compilation and
-    // (2) resolution (e.g. with the paths property)
-    //
-    // The (optional) fileName attribute specifies which file to take (relative to
-    // dependency-cruiser's current working directory). When not provided
-    // defaults to './tsconfig.json'.
-    // tsConfig: {
-    //   fileName: 'tsconfig.json'
-    // },
+    // Use an analysis-specific tsconfig so workspace alias imports resolve to src files.
+    tsConfig: {
+      fileName: 'tsconfig.depcruise.json'
+    },
 
     // Webpack configuration to use to get resolve options from.
     //

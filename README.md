@@ -220,6 +220,28 @@ See [`./docs`](./docs) for design context and implementation references:
 - [`Shared-Canvas-Conductor-Reference:-MCP-Apps-and-Core-MCP-Primitives.md`](./docs/Shared-Canvas-Conductor-Reference:-MCP-Apps-and-Core-MCP-Primitives.md): Technical reference mapping conductor patterns to MCP Apps and core MCP primitives, with protocol-level implementation notes.
 - [`THIS-IS-WEIRD.md`](./THIS-IS-WEIRD.md): A deliberately detailed “why/how does this even work?” mental model for humans and agents.
 
+## Architecture Graphs (On Demand)
+
+- Print latest dependency architecture snapshot as Mermaid (stdout; best for agents):
+
+```bash
+pnpm arch:deps:mermaid
+```
+
+- Generate dependency graph artifact:
+
+```bash
+pnpm arch:deps
+```
+
+- Validate dependency rules:
+
+```bash
+pnpm arch:deps:check
+```
+
+Tooling config lives in `tools/dependency-cruiser/`. Generated outputs go to `docs/architecture/graphs/` (ignored by default).
+
 ---
 
 ## Core concepts
@@ -263,31 +285,16 @@ A server that exposes:
 
 ## High-level architecture
 
-```mermaid
-flowchart LR
-  subgraph Host["Shared Canvas Host"]
-    V["View Compositor<br/>mount points + layout"]
-    B["AppBridge embedding<br/>sandboxed iframes + postMessage"]
-    P["Agent Chat + Patch-bay<br/>commands + trace UI"]
-  end
+For the latest dependency architecture snapshot, run:
 
-  subgraph Conductor["Conductor Runtime"]
-    R["Registry<br/>tools/resources + module manifests"]
-    W["Wiring Graph<br/>ports: outputs -> inputs"]
-    E["Event Bus + Trace Ledger"]
-  end
+```bash
+pnpm arch:deps:mermaid
+```
 
-  subgraph Modules["MCP App Modules (servers)"]
-    M1["PDF Module<br/>DocumentSource"]
-    M2["Say Module<br/>AudioSink"]
-    M3["Video Module<br/>MediaSource"]
-    M4["Transcript Module<br/>TranscriptStream"]
-  end
+To persist that snapshot as a file for external sharing, run:
 
-  Host <--> Conductor
-  P <--> E
-  Conductor <--> Modules
-  Host <--> Modules
+```bash
+pnpm arch:deps
 ```
 
 ---
