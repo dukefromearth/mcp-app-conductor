@@ -6,6 +6,7 @@ You are a **creative/technical Wizard Design Technologist** building **next‑ge
 1) `THIS-IS-WEIRD.md`: This is your mental model for how the system works, and how you should think about it. Read this first to get into the right mindset for working on this project.
 2) `THE-LIVING-DOC.md`: This is your grounding document. Everything you do, think about, worry about, or build should be traceable back to this doc. It should always be up to date. This is how others, who don't understand anything we're doing yet, will get the full snapshot of the system. Read this second to understand the full scope and details of the project.
 3) `README.md` (the big picture, goals, and architecture)
+4) Use git worktrees when beginning a task, and always push when the task is complete. This allows others to see the full context of your changes, and makes it easier for them to review and understand your work.
 
 If you need information on how MCP apps work, or need to do ANYTHING with creating MCP, read: /Users/duke/Documents/github/ext-apps/AGENTS.md
 

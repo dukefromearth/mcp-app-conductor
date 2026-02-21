@@ -28,6 +28,9 @@ If not re-verified, write `Unverified` rather than reusing old "now" language.
 - Aging: 15-30 days.
 - Stale: over 30 days.
 
+7. Tasks are a workboard, not a ledger.
+Keep `Active Tasks` small. When a task is completed and verified, remove it from `Active Tasks` (to avoid doc bloat) and record the outcome in `Change Log` (and a new Snapshot if it changes volatile facts).
+
 ## How To Update (human + agent)
 
 1. Read `THIS-IS-WEIRD.md`, this doc, and `README.md`.
@@ -36,6 +39,7 @@ If not re-verified, write `Unverified` rather than reusing old "now" language.
 4. Carry forward unchanged facts only if still verified.
 5. If verification was partial, mark unverified sections explicitly.
 6. Add one line to `Change Log` describing what changed and why.
+7. Update `Active Tasks` (add new work; remove completed tasks after logging them in `Change Log`).
 
 ## Source-of-Truth Index
 
@@ -63,6 +67,45 @@ These are intentionally durable and should only change when architecture changes
 - Conductor boundary transport baseline is stateless Streamable HTTP; session modules require a compatible adapter.
 - Contract Spine v1 metadata contract is the foundation for manifests, profiles, events, wiring edges, and runtime config artifacts.
 - Flight recorder is append-only JSONL for causality and "why chain" traceability.
+
+## Active Tasks (volatile, prune when done)
+
+As of: 2026-02-21
+
+This section is intentionally not a history log.
+
+- Use checkboxes (`- [ ]` / `- [x]`) while work is in-flight.
+- When a task is completed and verified, remove it from this list to avoid bloat.
+- When removing a completed task, add a `Change Log` entry with what shipped + how it was verified (and a new Snapshot if it changes volatile facts).
+
+- [ ] AT-1: Agent Turn Spine v1 (first-class Agent Turn Runtime)
+  - Why: the system has strong contracts + conductor + host primitives, but no canonical runtime boundary for `prompt -> invoke -> hydrate -> act -> trace -> narrate`, which makes agent orchestration feel operationally fragmented.
+  - Goal: introduce a provider-agnostic, trace-visible turn spine that is invoked only by a user prompt and executes typed actions through the conductor.
+  - Definition of done:
+    - A user prompt in host chat runs one full turn through this spine.
+    - No direct host heuristics for orchestration outside this path.
+    - North-star flow (“read this PDF out loud”) works end-to-end through the agent path with trace visibility.
+  - Work items:
+    - [ ] Add turn contracts in `packages/contracts`:
+      - `agent.turn.requested`
+      - `agent.context.hydrated`
+      - `agent.action.proposed`
+      - `agent.action.executed`
+      - `agent.turn.completed`
+    - [ ] Add conductor-facing APIs in `packages/conductor`:
+      - `hydrateAgentContext({ sinceEventId? })`
+      - `executeAgentActions(turnId, actions[])`
+      - All outcomes emitted as trace-linked events (turnId + correlation IDs)
+    - [ ] Add `packages/agent-runtime` adapter:
+      - provider-agnostic interface (no model lock-in)
+      - invoked only by user prompt
+      - consumes conductor context, emits typed actions + narration
+    - [ ] Wire canvas host chat -> agent runtime -> conductor execution (no orchestration heuristics outside this path).
+    - [ ] Prove north-star beat end-to-end (“read this PDF out loud”) using the agent turn path, with a trace timeline that answers “why?”.
+  - Verifiers:
+    - `pnpm build && pnpm typecheck`
+    - `node ./packages/cli/dist/index.js doctor`
+    - Run (or extend) proving-ground scenario(s) that cover the north-star beat via the agent path.
 
 ## Snapshot Ledger (append-only)
 
@@ -339,3 +382,4 @@ Verification status: Verified | Partially verified | Unverified
 ## Change Log
 
 - 2026-02-21: Refactored doc into anti-stale format (rules + source index + append-only snapshots) while preserving prior system content as snapshot `2026-02-21.a`.
+- 2026-02-21: Added `Active Tasks` workboard section (checkboxes) and seeded AT-1 (Agent Turn Spine v1) with a “remove-on-complete + log in Change Log” rule.
