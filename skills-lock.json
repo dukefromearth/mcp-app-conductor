@@ -1,0 +1,10 @@
+{
+  "version": 1,
+  "skills": {
+    "create-mcp-app": {
+      "source": "modelcontextprotocol/ext-apps",
+      "sourceType": "github",
+      "computedHash": "ea636919320b687b80e53354ae0e28e95e5cbaa6bc09d5faa541aff35f2ebf52"
+    }
+  }
+}

@@ -22,6 +22,10 @@
     "preview": "vite preview",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
+  "dependencies": {
+    "@mcp-app-conductor/contracts": "workspace:*",
+    "@modelcontextprotocol/sdk": "^1.25.2"
+  },
   "repository": {
     "type": "git",
     "url": "git+https://github.com/dukefromearth/mcp-app-conductor.git"

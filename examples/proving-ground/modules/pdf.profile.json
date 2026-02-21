@@ -1,0 +1,50 @@
+{
+  "manifest": {
+    "id": "pdf",
+    "version": "2.0.0",
+    "displayName": "PDF Server",
+    "views": [
+      {
+        "resourceUri": "ui://pdf-viewer/mcp-app.html",
+        "displayModes": ["main", "sidebar", "fullscreen"]
+      }
+    ],
+    "outputs": [
+      {
+        "name": "selectionText",
+        "description": "Selected text extracted from <pdf-selection> markers in model context"
+      }
+    ],
+    "inputs": [],
+    "stateResources": [],
+    "runtime": {
+      "transportMode": "stateless",
+      "stateModel": "ephemeral",
+      "affinity": "none",
+      "swapSupport": {
+        "hot": false,
+        "warm": true,
+        "cold": true
+      }
+    }
+  },
+  "runtime": {
+    "transportMode": "stateless",
+    "stateModel": "ephemeral",
+    "affinity": "none",
+    "swapSupport": {
+      "hot": false,
+      "warm": true,
+      "cold": true
+    }
+  },
+  "ports": {
+    "outputs": [
+      {
+        "name": "selectionText",
+        "description": "DocumentSource selected text signal"
+      }
+    ],
+    "inputs": []
+  }
+}

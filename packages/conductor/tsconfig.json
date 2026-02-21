@@ -6,7 +6,11 @@
     "strict": true,
     "skipLibCheck": true,
     "isolatedModules": true,
-    "noEmit": true
+    "noEmit": true,
+    "baseUrl": ".",
+    "paths": {
+      "@mcp-app-conductor/contracts": ["../contracts/src/index.ts"]
+    }
   },
   "include": ["src", "vite.config.ts"]
 }

@@ -1,0 +1,60 @@
+{
+  "manifest": {
+    "id": "say",
+    "version": "1.0.0",
+    "displayName": "Say Demo",
+    "views": [
+      {
+        "resourceUri": "ui://say-demo/view.html",
+        "displayModes": ["pip", "overlay", "fullscreen"]
+      }
+    ],
+    "outputs": [
+      {
+        "name": "playbackState",
+        "description": "Audio playback state updates"
+      }
+    ],
+    "inputs": [
+      {
+        "name": "text",
+        "description": "Text to speak"
+      }
+    ],
+    "stateResources": [],
+    "runtime": {
+      "transportMode": "stateless",
+      "stateModel": "ephemeral",
+      "affinity": "none",
+      "swapSupport": {
+        "hot": false,
+        "warm": true,
+        "cold": true
+      }
+    }
+  },
+  "runtime": {
+    "transportMode": "stateless",
+    "stateModel": "ephemeral",
+    "affinity": "none",
+    "swapSupport": {
+      "hot": false,
+      "warm": true,
+      "cold": true
+    }
+  },
+  "ports": {
+    "outputs": [
+      {
+        "name": "playbackState",
+        "description": "Audio sink playback events"
+      }
+    ],
+    "inputs": [
+      {
+        "name": "text",
+        "description": "AudioSink text input"
+      }
+    ]
+  }
+}

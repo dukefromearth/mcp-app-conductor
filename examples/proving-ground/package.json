@@ -2,12 +2,18 @@
   "name": "@mcp-app-conductor/proving-ground",
   "version": "0.1.0",
   "private": true,
+  "type": "module",
   "scripts": {
-    "scenario:a": "echo \"TODO: wire PDF -> Say scenario\"",
+    "probe": "tsx ./scripts/probe-mcp-servers.ts",
+    "scenario:a": "tsx ./scenarios/read-listen.ts",
     "scenario:b": "echo \"TODO: wire Video -> Transcript scenario\""
   },
   "dependencies": {
     "@mcp-app-conductor/contracts": "workspace:*",
+    "@modelcontextprotocol/sdk": "^1.25.2",
     "mcp-app-conductor": "workspace:*"
+  },
+  "devDependencies": {
+    "tsx": "^4.21.0"
   }
 }

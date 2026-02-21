@@ -1,0 +1,119 @@
+{
+  "modules": {
+    "pdf": {
+      "id": "pdf",
+      "url": "http://localhost:3001/mcp",
+      "manifest": {
+        "id": "pdf",
+        "version": "2.0.0",
+        "displayName": "PDF Server",
+        "views": [
+          {
+            "resourceUri": "ui://pdf-viewer/mcp-app.html",
+            "displayModes": [
+              "main",
+              "sidebar",
+              "fullscreen"
+            ]
+          }
+        ],
+        "outputs": [
+          {
+            "name": "selectionText",
+            "description": "Selected text extracted from <pdf-selection> markers in model context"
+          }
+        ],
+        "inputs": [],
+        "stateResources": [],
+        "runtime": {
+          "transportMode": "stateless",
+          "stateModel": "ephemeral",
+          "affinity": "none",
+          "swapSupport": {
+            "hot": false,
+            "warm": true,
+            "cold": true
+          }
+        }
+      },
+      "profile": {
+        "transportMode": "stateless",
+        "stateModel": "ephemeral",
+        "affinity": "none",
+        "swapSupport": {
+          "hot": false,
+          "warm": true,
+          "cold": true
+        }
+      }
+    },
+    "say": {
+      "id": "say",
+      "url": "http://localhost:3002/mcp",
+      "manifest": {
+        "id": "say",
+        "version": "1.0.0",
+        "displayName": "Say Demo",
+        "views": [
+          {
+            "resourceUri": "ui://say-demo/view.html",
+            "displayModes": [
+              "pip",
+              "overlay",
+              "fullscreen"
+            ]
+          }
+        ],
+        "outputs": [
+          {
+            "name": "playbackState",
+            "description": "Audio playback state updates"
+          }
+        ],
+        "inputs": [
+          {
+            "name": "text",
+            "description": "Text to speak"
+          }
+        ],
+        "stateResources": [],
+        "runtime": {
+          "transportMode": "stateless",
+          "stateModel": "ephemeral",
+          "affinity": "none",
+          "swapSupport": {
+            "hot": false,
+            "warm": true,
+            "cold": true
+          }
+        }
+      },
+      "profile": {
+        "transportMode": "stateless",
+        "stateModel": "ephemeral",
+        "affinity": "none",
+        "swapSupport": {
+          "hot": false,
+          "warm": true,
+          "cold": true
+        }
+      }
+    }
+  },
+  "wiring": [
+    {
+      "id": "edge-c72ab02a-4ff1-40b9-b7b3-d7849cd3714b",
+      "from": {
+        "moduleId": "say",
+        "port": "selectionText"
+      },
+      "to": {
+        "moduleId": "say",
+        "tool": "say",
+        "arg": "text"
+      },
+      "enabled": true
+    }
+  ],
+  "traceFile": "/Users/duke/Documents/github/mcp-app-conductor/flight-recorder.jsonl"
+}

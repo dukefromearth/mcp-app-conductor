@@ -11,6 +11,8 @@
   },
   "dependencies": {
     "@mcp-app-conductor/contracts": "workspace:*",
+    "@modelcontextprotocol/ext-apps": "^1.0.1",
+    "@modelcontextprotocol/sdk": "^1.25.2",
     "mcp-app-conductor": "workspace:*"
   },
   "devDependencies": {

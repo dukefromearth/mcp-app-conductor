@@ -22,6 +22,7 @@ This repo is optimized for **internal prototyping**: fast iteration, rich “com
 
 * Multi-view compositor with **mount points** (main, sidebar, overlay, PiP/fullscreen if supported).
 * Integrates MCP Apps embedding via **AppBridge** (iframe sandbox + message plumbing + tool proxying). ([modelcontextprotocol.github.io][2])
+* An **Agent Chat** “command deck” that can act with full conductor context (mount/wire/call tools) while streaming “what’s happening” as the canvas changes.
 * A “patch-bay” debug overlay that shows mounted modules and live wiring.
 
 ### Demo harness (“Conductor Proving Ground”)
@@ -33,6 +34,117 @@ Composable scenarios using upstream MCP Apps examples (PDF + Say + Video + Trans
 * traceability (event + tool-call timeline)
 
 > ext-apps includes a reference `basic-host` example and explicitly notes there’s no supported host implementation beyond examples—hosts either use MCP-UI or roll their own. ([modelcontextprotocol.github.io][3])
+
+---
+
+## Current implementation status (Feb 2026)
+
+- `packages/contracts`: runtime profile + swap + wiring + event-envelope contracts are live.
+- `packages/conductor`: event-sourced runtime APIs are implemented (`register`, `discover`, `mount`, `wire`, `swap`, `emitPortEvent`, `trace`).
+- `packages/canvas-host`: browser host now connects to PDF/Say, mounts MCP Apps with AppBridge, shows inventory, wiring, and trace overlays.
+- `packages/cli`: operational commands are implemented:
+  - `mcp-canvas probe`
+  - `mcp-canvas dev`
+  - `mcp-canvas connect --id --url --profile`
+  - `mcp-canvas wire --from --to`
+  - `mcp-canvas swap --from --to --mode auto`
+  - `mcp-canvas trace --tail`
+- `examples/proving-ground`: includes protocol probe, module profiles, and Scenario A (`read-listen`) script.
+
+### Transport baseline
+
+The conductor baseline is **stateless Streamable HTTP** at the module boundary.  
+Session-oriented modules require a transport adapter and are rejected otherwise.
+
+---
+
+## The weird part (and why it’s incredible)
+
+If this concept feels esoteric, that’s a good sign — it’s a genuinely new separation of concerns.
+
+In a “normal” web app, the UI *is* the system: one codebase owns the DOM, owns the state, and calls functions directly.
+
+In a shared canvas, the UI is **multiple sandboxed mini-apps** (MCP Apps) mounted side-by-side — and the *system* becomes the thing that coordinates them:
+
+- The **Canvas Host** renders views (and decides layout, theming, sandbox policy, what’s allowed).
+- The **Conductor** never “looks at pixels.” It operates on a **typed event stream** + **capability inventory**:
+  - what tools/resources each module exposes
+  - what views are mounted and where
+  - what each module’s current state surface is
+  - what wiring edges are active (outputs → inputs), and whether schemas match
+  - a traceable “why chain” of cause → effect across apps
+
+### A concrete analogy (VS Code + Codex)
+
+When you see a rendered Mermaid diagram in chat, that rendering is a **host feature**.
+What the agent gets is the **source** (the Mermaid text) plus structured signals (tool calls, outputs, context snapshots).
+
+This prototype takes that same split and turns it into a product:
+
+- **You** see: a PDF view, a TTS view, a transcript overlay, a debug patch-bay.
+- The **conductor** sees: selection events, playback state, transcript chunks, tool schemas, resource updates, logs — all correlated.
+
+### What you see vs what the conductor “sees”
+
+| You experience | The conductor receives / maintains |
+| --- | --- |
+| “A PDF is open in Main” | Mounted view instance (`resourceUri`, display mode, lifecycle state) |
+| “I highlighted this paragraph” | Output event like `DocumentSource.selectionText: string` + correlation ID |
+| “Audio started playing in PiP” | Tool call `AudioSink.speak({ text })` + progress/cancel + playback status updates |
+| “Why did that happen?” | Timeline: user gesture → UI event → tool call → tool result → downstream updates |
+
+### Turns: the conductor’s “chat loop,” but for a canvas
+
+The conductor behaves like a turn-based agent, except its “prompt” is the canvas:
+
+1. A user gesture (or server update) emits an event from some view/module.
+2. The host forwards it into the conductor’s event bus with correlation metadata.
+3. The wiring graph deterministically routes outputs → inputs (schema-checked).
+4. The host executes the resulting tool calls (still capability-gated and sandboxed).
+5. Views update, and the flight recorder writes the causal chain.
+
+```mermaid
+sequenceDiagram
+  participant U as User
+  participant V as MCP App View
+  participant H as Canvas Host (renderer)
+  participant C as Conductor (orchestrator)
+  participant S as Module Server
+
+  U->>V: gesture (select / play / commit)
+  V->>H: UI event (typed message)
+  H->>C: publish(event, correlationId)
+  C->>H: decide + request actions
+  H->>S: MCP tool/resource calls
+  S-->>H: results / updates / logs
+  H-->>V: deliver updates
+  H-->>U: render changes
+```
+
+This is the heart of the demo: **multi-app feels like one instrument panel** because the conductor holds the shared truth — without breaking sandbox boundaries.
+
+### The missing magic: “chat that can see the canvas”
+
+This is the leap from “chat that can *show* things” to “chat that can *operate* a cockpit.”
+
+The chat isn’t only a place where you *talk about* what’s on screen — it’s a place where you can ask for outcomes, and the agent can safely do the mechanical work because it has conductor context.
+
+Example (“watch movie A”):
+
+```text
+User: I want to watch “Movie A”.
+
+Agent: Checking canvas state… no MediaSource mounted.
+Agent: Mounting Video module → main…
+Agent: Searching catalog for “Movie A”…
+Agent: Loading media into the Video view…
+Agent: (Optional) Mounting Transcript → overlay and wiring subtitles…
+
+System: Video mounted (main). Playback started.
+System: Transcript mounted (overlay). Subtitles live.
+```
+
+While that’s happening, you’re watching the canvas UI change in real time — and you always have a “why did that happen?” timeline if something surprises you.
 
 ---
 
@@ -94,6 +206,7 @@ See [`./docs`](./docs) for design context and implementation references:
 
 - [`MCP-Apps-and-the-Conductor-for-Shared-Canvas-Multi-App-Experiences.md`](./docs/MCP-Apps-and-the-Conductor-for-Shared-Canvas-Multi-App-Experiences.md): Product-oriented overview of the shared-canvas/conductor concept, goals, architecture, and demo scenarios.
 - [`Shared-Canvas-Conductor-Reference:-MCP-Apps-and-Core-MCP-Primitives.md`](./docs/Shared-Canvas-Conductor-Reference:-MCP-Apps-and-Core-MCP-Primitives.md): Technical reference mapping conductor patterns to MCP Apps and core MCP primitives, with protocol-level implementation notes.
+- [`THIS-IS-WEIRD.md`](./THIS-IS-WEIRD.md): A deliberately detailed “why/how does this even work?” mental model for humans and agents.
 
 ---
 
@@ -118,6 +231,15 @@ A coordination runtime that:
 * wires module ports together
 * maintains a traceable causal chain of actions
 
+### Agent Chat (the “pilot”)
+
+A chat surface inside the host that:
+
+* accepts high-level intents (“watch *movie A*”, “read this aloud”, “swap PDF → video”)
+* reads the conductor’s current context (mounted views, wiring graph, module state)
+* asks the conductor to perform actions (mount, connect ports, call tools/resources)
+* streams progress + events back to the user (and into the flight recorder)
+
 ### Module (MCP App server)
 
 A server that exposes:
@@ -134,6 +256,7 @@ flowchart LR
   subgraph Host["Shared Canvas Host"]
     V["View Compositor<br/>mount points + layout"]
     B["AppBridge embedding<br/>sandboxed iframes + postMessage"]
+    P["Agent Chat + Patch-bay<br/>commands + trace UI"]
   end
 
   subgraph Conductor["Conductor Runtime"]
@@ -150,6 +273,7 @@ flowchart LR
   end
 
   Host <--> Conductor
+  P <--> E
   Conductor <--> Modules
   Host <--> Modules
 ```
@@ -179,18 +303,16 @@ The upstream examples exercise real MCP Apps behaviors such as tool→UI binding
 ### 2) Start the canvas host + conductor
 
 ```bash
-pnpm --filter canvas-host dev
-# or
-pnpm mcp-canvas dev
+pnpm dev:host
+# open http://localhost:5173
 ```
 
-### 3) Connect modules (stdio or HTTP)
+### 3) Run conformance + scenario checks
 
 ```bash
-pnpm mcp-canvas connect --server pdf=http://localhost:3001/mcp
-pnpm mcp-canvas connect --server say=http://localhost:3002/mcp
-pnpm mcp-canvas connect --server video=http://localhost:3003/mcp
-pnpm mcp-canvas connect --server transcript=http://localhost:3004/mcp
+node ./packages/cli/dist/index.js probe
+pnpm --filter @mcp-app-conductor/proving-ground probe
+pnpm --filter @mcp-app-conductor/proving-ground scenario:a
 ```
 
 > The MCP TypeScript SDK supports stdio and Streamable HTTP transports and includes runnable examples for both servers and clients. ([GitHub][4])
@@ -208,22 +330,24 @@ Conductor wiring:
 * `DocumentSource.selectionText` → `AudioSink.speak(text)`
 
 ```ts
-import { createConductor } from "mcp-canvas-conductor/conductor";
-import { z } from "zod";
+import { createConductor } from 'mcp-app-conductor';
 
-const conductor = await createConductor({
-  servers: [
-    { id: "pdf", url: "http://localhost:3001/mcp" },
-    { id: "say", url: "http://localhost:3002/mcp" },
-  ],
+const conductor = createConductor();
+
+await conductor.registerModule({ id: 'pdf', url: 'http://localhost:3001/mcp', manifest: pdfManifest });
+await conductor.registerModule({ id: 'say', url: 'http://localhost:3002/mcp', manifest: sayManifest });
+await conductor.discoverCapabilities();
+
+conductor.connectPorts({
+  from: { moduleId: 'pdf', port: 'selectionText' },
+  to: { moduleId: 'say', tool: 'say', arg: 'text' },
+  enabled: true,
 });
 
-await conductor.mount({ moduleId: "pdf", mountPoint: "main" });
-await conductor.mount({ moduleId: "say", mountPoint: "pip" });
-
-await conductor.connectPorts({
-  from: { moduleId: "pdf", port: "selectionText", schema: z.string() },
-  to:   { moduleId: "say", tool: "speak", arg: "text", schema: z.string() },
+await conductor.emitPortEvent({
+  moduleId: 'pdf',
+  port: 'selectionText',
+  data: 'Route this text to speech.',
 });
 ```
 
