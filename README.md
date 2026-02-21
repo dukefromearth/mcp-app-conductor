@@ -105,19 +105,29 @@ This prototype takes that same split and turns it into a product:
 | “Audio started playing in PiP” | Tool call `AudioSink.speak({ text })` + progress/cancel + playback status updates |
 | “Why did that happen?” | Timeline: user gesture → UI event → tool call → tool result → downstream updates |
 
-### Turns: the conductor’s “chat loop,” but for a canvas
+### Execution model: continuous conductor rail + prompt-initiated agent turns
 
-The conductor behaves like a turn-based agent, except its “prompt” is the canvas:
+The conductor is always-on event infrastructure; the agent is not.
 
-1. A user gesture (or server update) emits an event from some view/module.
-2. The host forwards it into the conductor’s event bus with correlation metadata.
-3. The wiring graph deterministically routes outputs → inputs (schema-checked).
-4. The host executes the resulting tool calls (still capability-gated and sandboxed).
-5. Views update, and the flight recorder writes the causal chain.
+Continuous path:
+
+1. A user gesture (or server update) emits an event from a view/module.
+2. The host forwards it into the conductor event bus with correlation metadata.
+3. The wiring graph deterministically routes outputs -> inputs (schema-checked).
+4. The host executes resulting tool calls (still capability-gated and sandboxed).
+5. Views update, and flight recorder writes the causal chain.
+
+Prompt path:
+
+1. User prompt invokes an agent turn.
+2. Agent context is hydrated from conductor truth (state + trace + capabilities).
+3. Agent requests actions through conductor/host boundaries.
+4. System executes and records the same causal chain.
 
 ```mermaid
 sequenceDiagram
   participant U as User
+  participant A as Agent
   participant V as MCP App View
   participant H as Canvas Host (renderer)
   participant C as Conductor (orchestrator)
@@ -126,11 +136,20 @@ sequenceDiagram
   U->>V: gesture (select / play / commit)
   V->>H: UI event (typed message)
   H->>C: publish(event, correlationId)
-  C->>H: decide + request actions
+  C->>H: route decision(s)
   H->>S: MCP tool/resource calls
   S-->>H: results / updates / logs
   H-->>V: deliver updates
   H-->>U: render changes
+
+  U->>A: prompt
+  A->>C: hydrate context request
+  C-->>A: state + trace + capabilities
+  A->>C: orchestration request(s)
+  C->>H: validated action(s)
+  H->>S: execute
+  S-->>H: result
+  H-->>U: UI update + narration context
 ```
 
 This is the heart of the demo: **multi-app feels like one instrument panel** because the conductor holds the shared truth — without breaking sandbox boundaries.

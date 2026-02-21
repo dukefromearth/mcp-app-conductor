@@ -57,6 +57,8 @@ These are intentionally durable and should only change when architecture changes
 
 - System model: Canvas Host renders MCP views; Conductor orchestrates typed events/wiring; Modules expose MCP tools/resources/prompts/UI; Contracts define validation and artifact schemas.
 - Conductor works on structured signals and event envelopes, not rendered pixels.
+- Framing contract: humans operate in pixels; agents reason over conductor-provided structured signals only when user-invoked.
+- Interaction model: user can interact with chat and canvas in parallel; agent work is user-initiated (idle until prompt), and invocation hydrates agent context from conductor truth.
 - Capability-gated behavior and progressive enhancement are first principles.
 - Conductor boundary transport baseline is stateless Streamable HTTP; session modules require a compatible adapter.
 - Contract Spine v1 metadata contract is the foundation for manifests, profiles, events, wiring edges, and runtime config artifacts.
@@ -141,6 +143,11 @@ pnpm arch:deps
 
 - `examples/proving-ground`
 : protocol probe, Contract Spine v1 module profiles, and `scenario:a` (`read-listen`) runner
+
+Agent posture at snapshot time:
+- Agent interaction is user-initiated and turn-based (idle between prompts by default).
+- The conductor is persistent shared state/memory and deterministic execution substrate for agent turns.
+- Agent context is hydrated from conductor state/events/capabilities at invocation time.
 
 #### Transport baseline at snapshot time
 
