@@ -56,14 +56,18 @@ flowchart LR
   - `registerModule(...)`
   - `discoverCapabilities(...)`
   - `mountView(...)`
+  - `validateWiringEdge(...)`
   - `connectPorts(...)`
   - `swapModule(...)`
   - `emitPortEvent(...)`
   - `reportValidationOutcome(...)`
   - `subscribe(...)`
-  - `getState()` / `getTrace()`
+  - `getState()` / `getMetrics()` / `getTrace()`
+  - `close()`
   - Config accepts `validationPolicy`
   - Events are emitted as metadata-rich envelopes (`contractVersion`, `kind`, `extensions`)
+  - Wiring edges are validated before commit with trace-visible outcomes (`wiring.validate`, `wiring.reject|warn|accept`).
+  - High-signal event payloads are validated via schema map and invalid payloads emit `validation.outcome`.
 
 - `packages/canvas-host`
 : Browser host with:
@@ -74,6 +78,8 @@ flowchart LR
   - trace + inventory overlay
   - schema-enforced host ingress for mount args and wire inputs
   - host boundary validation outcomes routed into conductor trace
+  - validation panel with latest boundary outcomes and trace IDs
+  - host-only strictness toggle (`enforce|warn|observe`) for debug/demo workflows
 
 - `packages/cli`
 : `mcp-canvas` commands:
@@ -82,9 +88,12 @@ flowchart LR
   - `connect`
   - `wire`
   - `swap`
+  - `doctor`
   - `trace`
   - CLI ingress is schema-enforced for runtime config, profile JSON, and wiring flags
   - validation failures print normalized JSON outcomes to stderr and exit `1`
+  - runtime config supports auto-migration from legacy shape to v1 and persists atomically
+  - migration summaries are printed explicitly with normalized warnings
   - runtime config writes metadata-rich shape + validation policy
 
 - `examples/proving-ground`
@@ -130,6 +139,8 @@ Default policy is hybrid strict:
 - `cli.flags`: enforce
 - `host.mountArgs`: enforce
 - `host.wireInput`: enforce
+- `conductor.wiringEdge`: enforce
+- `conductor.eventPayload`: warn
 - `conductor.portSignal`: warn
 
 Behavior matrix:
@@ -142,7 +153,15 @@ Validation outcomes are represented as typed `validation.outcome` events where c
 
 ### Migration Note
 
-Older profile/runtime JSON without required metadata no longer parse.
+Legacy `.mcp-canvas-runtime.json` now auto-migrates on CLI load:
+
+- parse as v1 first
+- fallback to legacy schema
+- transform to Contract Spine v1 shape
+- atomically persist migrated config
+- continue command execution while printing migration warnings
+
+Profile JSON without required metadata still fails at `cli.profile` boundary by design.
 
 Minimum runtime config shape now includes:
 
@@ -190,20 +209,26 @@ All fallback decisions emit trace events (`swap.plan`, `swap.fallback`, `swap.ap
 ## Conformance Workflow
 
 1. Start ext-app servers (`pdf` on `3001`, `say` on `3002`)
-2. Ensure runtime config is v1 shape (or remove old `.mcp-canvas-runtime.json` and let CLI regenerate)
-3. Run CLI probe:
+2. Run runtime diagnostics:
+
+```bash
+node ./packages/cli/dist/index.js doctor
+```
+
+3. Ensure runtime config is v1 shape (legacy files auto-migrate on CLI load)
+4. Run CLI probe:
 
 ```bash
 node ./packages/cli/dist/index.js probe
 ```
 
-4. Run proving-ground probe:
+5. Run proving-ground probe:
 
 ```bash
 pnpm --filter @mcp-app-conductor/proving-ground probe
 ```
 
-5. Run scenario A:
+6. Run scenario A:
 
 ```bash
 pnpm --filter @mcp-app-conductor/proving-ground scenario:a
@@ -214,5 +239,5 @@ pnpm --filter @mcp-app-conductor/proving-ground scenario:a
 - Canvas host currently mounts views and runs AppBridge, but UX is still prototype-grade.
 - Swap behavior remaps wiring and traces decision/fallback; deep runtime state migration is not implemented.
 - Video/transcript scenarios remain planned.
-- No auto-migration helper for legacy `.mcp-canvas-runtime.json`; legacy files must be upgraded or recreated.
-- Event payload typing is still broad for many event types (no full discriminated union yet).
+- Event payload typing is hardened for high-signal events, but a full discriminated union for all event classes is not implemented.
+- Runtime diagnostics are currently CLI-first (`doctor`) and not yet a dedicated host diagnostics workflow.

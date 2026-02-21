@@ -102,6 +102,14 @@ export interface PortSignal {
 export type ValidationOutcomeInput = ValidationOutcome;
 export type ConductorValidationPolicy = ValidationPolicy;
 
+export interface StoreMetrics {
+  dispatchCount: number;
+  eventCount: number;
+  lastValidationDispatch: number;
+  lastGetStateDurationMs: number;
+  lastSnapshotBytes: number;
+}
+
 export interface ConductorEventListener {
   (event: EventEnvelope, state: ConductorSnapshot): void;
 }

@@ -171,6 +171,8 @@ Current default posture for this repo:
 - Versioning: semver `contractVersion` with supported major `1`.
 - Validation policy: hybrid strict.
   - static ingress boundaries (`cli.*`, `host.*`) enforce
-  - dynamic runtime boundary (`conductor.portSignal`) warn
+  - wiring boundary (`conductor.wiringEdge`) enforce
+  - dynamic runtime boundaries (`conductor.eventPayload`, `conductor.portSignal`) warn
+- Runtime config compatibility: legacy runtime shape is auto-migrated to Contract Spine v1 at CLI load boundaries; profile contracts remain strict.
 
 These defaults are foundation choices for scaling, and can be tightened or relaxed per boundary through explicit policy contracts.

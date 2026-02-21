@@ -1,9 +1,18 @@
 {
+  "contractVersion": "1.0.0",
+  "kind": "canvas.runtimeConfig",
+  "extensions": {},
   "modules": {
     "pdf": {
+      "contractVersion": "1.0.0",
+      "kind": "canvas.persistedModule",
+      "extensions": {},
       "id": "pdf",
       "url": "http://localhost:3001/mcp",
       "manifest": {
+        "contractVersion": "1.0.0",
+        "kind": "module.manifest",
+        "extensions": {},
         "id": "pdf",
         "version": "2.0.0",
         "displayName": "PDF Server",
@@ -26,6 +35,9 @@
         "inputs": [],
         "stateResources": [],
         "runtime": {
+          "contractVersion": "1.0.0",
+          "kind": "module.runtimeProfile",
+          "extensions": {},
           "transportMode": "stateless",
           "stateModel": "ephemeral",
           "affinity": "none",
@@ -37,6 +49,9 @@
         }
       },
       "profile": {
+        "contractVersion": "1.0.0",
+        "kind": "module.runtimeProfile",
+        "extensions": {},
         "transportMode": "stateless",
         "stateModel": "ephemeral",
         "affinity": "none",
@@ -48,9 +63,15 @@
       }
     },
     "say": {
+      "contractVersion": "1.0.0",
+      "kind": "canvas.persistedModule",
+      "extensions": {},
       "id": "say",
       "url": "http://localhost:3002/mcp",
       "manifest": {
+        "contractVersion": "1.0.0",
+        "kind": "module.manifest",
+        "extensions": {},
         "id": "say",
         "version": "1.0.0",
         "displayName": "Say Demo",
@@ -78,6 +99,9 @@
         ],
         "stateResources": [],
         "runtime": {
+          "contractVersion": "1.0.0",
+          "kind": "module.runtimeProfile",
+          "extensions": {},
           "transportMode": "stateless",
           "stateModel": "ephemeral",
           "affinity": "none",
@@ -89,6 +113,9 @@
         }
       },
       "profile": {
+        "contractVersion": "1.0.0",
+        "kind": "module.runtimeProfile",
+        "extensions": {},
         "transportMode": "stateless",
         "stateModel": "ephemeral",
         "affinity": "none",
@@ -102,9 +129,12 @@
   },
   "wiring": [
     {
+      "contractVersion": "1.0.0",
+      "kind": "conductor.wiringEdge",
+      "extensions": {},
       "id": "edge-c72ab02a-4ff1-40b9-b7b3-d7849cd3714b",
       "from": {
-        "moduleId": "say",
+        "moduleId": "pdf",
         "port": "selectionText"
       },
       "to": {
@@ -115,5 +145,15 @@
       "enabled": true
     }
   ],
-  "traceFile": "/Users/duke/Documents/github/mcp-app-conductor/flight-recorder.jsonl"
+  "traceFile": "/Users/duke/Documents/github/mcp-app-conductor/flight-recorder.jsonl",
+  "validationPolicy": {
+    "cli.runtimeConfig": "enforce",
+    "cli.profile": "enforce",
+    "cli.flags": "enforce",
+    "host.mountArgs": "enforce",
+    "host.wireInput": "enforce",
+    "conductor.wiringEdge": "enforce",
+    "conductor.eventPayload": "warn",
+    "conductor.portSignal": "warn"
+  }
 }

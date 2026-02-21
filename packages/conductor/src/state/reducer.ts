@@ -1,16 +1,13 @@
-import type { EventEnvelope, MountedView, ValidationOutcome, WiringEdge } from '@mcp-app-conductor/contracts';
-import type { CapabilityInventory, ConductorSnapshot, RegisteredModule } from '../types';
-
-export interface ConductorEventPayloadMap {
-  'module.registered': { module: RegisteredModule };
-  'module.rejected': { moduleId: string; reason: string };
-  'module.error': { moduleId: string; reason: string };
-  'module.capabilities': { moduleId: string; capabilities: CapabilityInventory };
-  'wiring.connected': { edge: WiringEdge };
-  'view.mounted': { view: MountedView };
-  'swap.applied': { fromModuleId: string; toModuleId: string; edgeIds: string[] };
-  'validation.outcome': ValidationOutcome;
-}
+import {
+  moduleCapabilitiesPayloadSchema,
+  moduleErrorPayloadSchema,
+  moduleRegisteredPayloadSchema,
+  moduleRejectedPayloadSchema,
+  viewMountedPayloadSchema,
+  wiringConnectedPayloadSchema,
+  type EventEnvelope,
+} from '@mcp-app-conductor/contracts';
+import type { ConductorSnapshot } from '../types';
 
 function pushEvent(events: EventEnvelope[], event: EventEnvelope): EventEnvelope[] {
   const next = [...events, event];
@@ -30,16 +27,24 @@ export function reduceState(state: ConductorSnapshot, event: EventEnvelope): Con
     events: pushEvent(state.events, event),
   };
 
-  const payload = event.payload as ConductorEventPayloadMap[keyof ConductorEventPayloadMap] | undefined;
-
   switch (event.type) {
     case 'module.registered': {
-      const typed = payload as ConductorEventPayloadMap['module.registered'];
+      const parsed = moduleRegisteredPayloadSchema.safeParse(event.payload);
+      if (!parsed.success) {
+        break;
+      }
+
+      const typed = parsed.data;
       next.modules[typed.module.id] = typed.module;
       break;
     }
     case 'module.rejected': {
-      const typed = payload as ConductorEventPayloadMap['module.rejected'];
+      const parsed = moduleRejectedPayloadSchema.safeParse(event.payload);
+      if (!parsed.success) {
+        break;
+      }
+
+      const typed = parsed.data;
       const existing = next.modules[typed.moduleId];
       if (existing) {
         next.modules[typed.moduleId] = {
@@ -51,7 +56,12 @@ export function reduceState(state: ConductorSnapshot, event: EventEnvelope): Con
       break;
     }
     case 'module.error': {
-      const typed = payload as ConductorEventPayloadMap['module.error'];
+      const parsed = moduleErrorPayloadSchema.safeParse(event.payload);
+      if (!parsed.success) {
+        break;
+      }
+
+      const typed = parsed.data;
       const existing = next.modules[typed.moduleId];
       if (existing) {
         next.modules[typed.moduleId] = {
@@ -63,7 +73,12 @@ export function reduceState(state: ConductorSnapshot, event: EventEnvelope): Con
       break;
     }
     case 'module.capabilities': {
-      const typed = payload as ConductorEventPayloadMap['module.capabilities'];
+      const parsed = moduleCapabilitiesPayloadSchema.safeParse(event.payload);
+      if (!parsed.success) {
+        break;
+      }
+
+      const typed = parsed.data;
       next.capabilityInventory[typed.moduleId] = typed.capabilities;
       const existing = next.modules[typed.moduleId];
       if (existing) {
@@ -76,7 +91,12 @@ export function reduceState(state: ConductorSnapshot, event: EventEnvelope): Con
       break;
     }
     case 'wiring.connected': {
-      const typed = payload as ConductorEventPayloadMap['wiring.connected'];
+      const parsed = wiringConnectedPayloadSchema.safeParse(event.payload);
+      if (!parsed.success) {
+        break;
+      }
+
+      const typed = parsed.data;
       const index = next.wiring.findIndex((edge) => edge.id === typed.edge.id);
       if (index >= 0) {
         next.wiring[index] = typed.edge;
@@ -86,7 +106,12 @@ export function reduceState(state: ConductorSnapshot, event: EventEnvelope): Con
       break;
     }
     case 'view.mounted': {
-      const typed = payload as ConductorEventPayloadMap['view.mounted'];
+      const parsed = viewMountedPayloadSchema.safeParse(event.payload);
+      if (!parsed.success) {
+        break;
+      }
+
+      const typed = parsed.data;
       next.views.push(typed.view);
       break;
     }

@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { CONTRACT_VERSION, contractMetadataSchemaForKind } from './core.js';
+import { validationOutcomeSchema } from './validation.js';
 
 export const displayModeSchema = z.enum(['main', 'sidebar', 'overlay', 'pip', 'fullscreen']);
 
@@ -101,6 +102,31 @@ export const moduleConnectionSchema = z.object({
   transportAdapterId: z.string().optional(),
 });
 
+export const toolLikeSchema = z.object({
+  name: z.string().min(1),
+  inputSchema: z.record(z.unknown()).optional(),
+  outputSchema: z.record(z.unknown()).optional(),
+  _meta: z.record(z.unknown()).optional(),
+});
+
+export const resourceLikeSchema = z.object({
+  uri: z.string().min(1),
+  mimeType: z.string().optional(),
+  _meta: z.record(z.unknown()).optional(),
+});
+
+export const promptLikeSchema = z.object({
+  name: z.string().min(1),
+  description: z.string().optional(),
+});
+
+export const capabilityInventorySchema = z.object({
+  tools: z.array(toolLikeSchema),
+  resources: z.array(resourceLikeSchema),
+  prompts: z.array(promptLikeSchema),
+  discoveredAt: z.string().min(1),
+});
+
 export const mountedViewSchema = z.object({
   id: z.string().min(1),
   moduleId: z.string().min(1),
@@ -109,6 +135,105 @@ export const mountedViewSchema = z.object({
   mountPoint: displayModeSchema,
   createdAt: z.string().min(1),
 });
+
+export const registeredModuleSchema = moduleConnectionSchema.extend({
+  status: z.enum(['registered', 'connected', 'rejected', 'error']),
+  lastError: z.string().optional(),
+});
+
+export const moduleRegisteredPayloadSchema = z.object({
+  module: registeredModuleSchema,
+});
+
+export const moduleRejectedPayloadSchema = z.object({
+  moduleId: z.string().min(1),
+  reason: z.string().min(1),
+});
+
+export const moduleErrorPayloadSchema = z.object({
+  moduleId: z.string().min(1),
+  reason: z.string().min(1),
+});
+
+export const moduleCapabilitiesPayloadSchema = z.object({
+  moduleId: z.string().min(1),
+  capabilities: capabilityInventorySchema,
+});
+
+export const viewMountedPayloadSchema = z.object({
+  view: mountedViewSchema,
+});
+
+export const wiringConnectedPayloadSchema = z.object({
+  edge: wiringEdgeSchema,
+});
+
+export const portEventPayloadSchema = z.object({
+  moduleId: z.string().min(1),
+  port: z.string().min(1),
+  data: z.unknown(),
+});
+
+export const toolCallPayloadSchema = z.object({
+  moduleId: z.string().min(1),
+  toolName: z.string().min(1),
+  args: z.record(z.unknown()),
+  edgeId: z.string().min(1).optional(),
+});
+
+export const toolResultPayloadSchema = z.object({
+  moduleId: z.string().min(1),
+  toolName: z.string().min(1),
+  result: z.unknown(),
+  edgeId: z.string().min(1).optional(),
+});
+
+export const swapPlanPayloadSchema = z.object({
+  fromModuleId: z.string().min(1),
+  toModuleId: z.string().min(1),
+  requested: swapModeSchema,
+  resolved: z.enum(['hot', 'warm', 'cold']),
+  reasons: z.array(z.string()),
+});
+
+export const swapFallbackPayloadSchema = swapPlanPayloadSchema;
+
+export const swapAppliedPayloadSchema = z.object({
+  fromModuleId: z.string().min(1),
+  toModuleId: z.string().min(1),
+  edgeIds: z.array(z.string().min(1)),
+});
+
+export const wiringDecisionPayloadSchema = z.object({
+  edge: wiringEdgeSchema,
+  outcomes: z.array(validationOutcomeSchema),
+});
+
+export const eventPayloadSchemaMap = {
+  'module.registered': moduleRegisteredPayloadSchema,
+  'module.rejected': moduleRejectedPayloadSchema,
+  'module.error': moduleErrorPayloadSchema,
+  'module.capabilities': moduleCapabilitiesPayloadSchema,
+  'view.mounted': viewMountedPayloadSchema,
+  'wiring.connected': wiringConnectedPayloadSchema,
+  'port.event': portEventPayloadSchema,
+  'tool.call': toolCallPayloadSchema,
+  'tool.result': toolResultPayloadSchema,
+  'swap.plan': swapPlanPayloadSchema,
+  'swap.fallback': swapFallbackPayloadSchema,
+  'swap.applied': swapAppliedPayloadSchema,
+  'validation.outcome': validationOutcomeSchema,
+  'wiring.validate': wiringDecisionPayloadSchema,
+  'wiring.reject': wiringDecisionPayloadSchema,
+  'wiring.warn': wiringDecisionPayloadSchema,
+  'wiring.accept': wiringDecisionPayloadSchema,
+} as const;
+
+export type KnownEventType = keyof typeof eventPayloadSchemaMap;
+
+export function getEventPayloadSchema(type: string) {
+  return eventPayloadSchemaMap[type as KnownEventType];
+}
 
 export const conductorStateSchema = z.object({
   modules: z.record(moduleConnectionSchema),
@@ -139,6 +264,24 @@ export type ModuleRuntimeProfile = z.infer<typeof moduleRuntimeProfileSchema>;
 export type EventEnvelope = z.infer<typeof eventEnvelopeSchema>;
 export type WiringEdge = z.infer<typeof wiringEdgeSchema>;
 export type ModuleConnection = z.infer<typeof moduleConnectionSchema>;
+export type ToolLike = z.infer<typeof toolLikeSchema>;
+export type ResourceLike = z.infer<typeof resourceLikeSchema>;
+export type PromptLike = z.infer<typeof promptLikeSchema>;
+export type CapabilityInventory = z.infer<typeof capabilityInventorySchema>;
 export type MountedView = z.infer<typeof mountedViewSchema>;
+export type RegisteredModule = z.infer<typeof registeredModuleSchema>;
+export type ModuleRegisteredPayload = z.infer<typeof moduleRegisteredPayloadSchema>;
+export type ModuleRejectedPayload = z.infer<typeof moduleRejectedPayloadSchema>;
+export type ModuleErrorPayload = z.infer<typeof moduleErrorPayloadSchema>;
+export type ModuleCapabilitiesPayload = z.infer<typeof moduleCapabilitiesPayloadSchema>;
+export type ViewMountedPayload = z.infer<typeof viewMountedPayloadSchema>;
+export type WiringConnectedPayload = z.infer<typeof wiringConnectedPayloadSchema>;
+export type PortEventPayload = z.infer<typeof portEventPayloadSchema>;
+export type ToolCallPayload = z.infer<typeof toolCallPayloadSchema>;
+export type ToolResultPayload = z.infer<typeof toolResultPayloadSchema>;
+export type SwapPlanPayload = z.infer<typeof swapPlanPayloadSchema>;
+export type SwapFallbackPayload = z.infer<typeof swapFallbackPayloadSchema>;
+export type SwapAppliedPayload = z.infer<typeof swapAppliedPayloadSchema>;
+export type WiringDecisionPayload = z.infer<typeof wiringDecisionPayloadSchema>;
 export type ConductorState = z.infer<typeof conductorStateSchema>;
 export type ModuleProfile = z.infer<typeof moduleProfileSchema>;

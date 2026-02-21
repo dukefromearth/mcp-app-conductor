@@ -1,11 +1,12 @@
 #!/usr/bin/env node
 
-import { appendFile, readFile, writeFile } from 'node:fs/promises';
+import { appendFile, readFile, rename, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import {
   CONTRACT_VERSION,
   createDefaultRuntimeConfig,
   defaultValidationPolicy,
+  migrateRuntimeConfig,
   moduleManifestSchema,
   modulePortSpecifierSchema,
   moduleProfileSchema,
@@ -17,6 +18,7 @@ import {
   type ModuleManifest,
   type ModuleRuntimeProfile,
   type RuntimeConfig,
+  type RuntimeConfigMigrationResult,
   type ValidationBoundary,
   type ValidationIssue,
   type ValidationMode,
@@ -27,7 +29,7 @@ import { createConductor, JsonlRecorder } from 'mcp-app-conductor';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
 
-type CommandName = 'help' | 'dev' | 'probe' | 'connect' | 'wire' | 'swap' | 'trace';
+type CommandName = 'help' | 'dev' | 'probe' | 'connect' | 'wire' | 'swap' | 'trace' | 'doctor';
 
 interface ProbeReport {
   url: string;
@@ -54,6 +56,19 @@ class CliValidationError extends Error {
 const runtimeFile = path.resolve(process.cwd(), '.mcp-canvas-runtime.json');
 const defaultTraceFile = path.resolve(process.cwd(), 'flight-recorder.jsonl');
 
+interface RuntimeLoadResult {
+  runtime: RuntimeConfig;
+  migration: RuntimeConfigMigrationResult | null;
+}
+
+interface DoctorIssue {
+  level: 'error' | 'warn';
+  edgeId?: string;
+  moduleId?: string;
+  message: string;
+  remediation: string;
+}
+
 function printHelp(): void {
   console.log('mcp-canvas commands:');
   console.log('  dev                                      Show current module + wiring inventory.');
@@ -64,6 +79,7 @@ function printHelp(): void {
   console.log('                                           Create/update a wiring edge.');
   console.log('  swap --from <module-id> --to <module-id> [--mode auto|hot|warm|cold]');
   console.log('                                           Execute tiered module swap planning + rewiring.');
+  console.log('  doctor                                   Validate runtime/modules/wiring and print repairs.');
   console.log('  trace --tail <n>                          Print latest flight-recorder JSONL entries.');
   console.log('  help                                     Print this help output.');
 }
@@ -109,7 +125,28 @@ function createValidationError(
   return new CliValidationError(createValidationOutcome(boundary, mode, message, issues));
 }
 
-async function loadRuntime(): Promise<RuntimeConfig> {
+async function writeRuntimeAtomic(runtime: RuntimeConfig): Promise<void> {
+  const parsed = runtimeConfigSchema.parse(runtime);
+  const tempPath = `${runtimeFile}.${process.pid}.${Date.now()}.tmp`;
+  await writeFile(tempPath, JSON.stringify(parsed, null, 2));
+  await rename(tempPath, runtimeFile);
+}
+
+function emitMigrationSummary(migration: RuntimeConfigMigrationResult): void {
+  if (!migration.migrated) {
+    return;
+  }
+
+  console.log(JSON.stringify({
+    migration: {
+      migrated: true,
+      runtimeFile,
+      warnings: migration.warnings,
+    },
+  }, null, 2));
+}
+
+async function loadRuntime(): Promise<RuntimeLoadResult> {
   let text: string;
 
   try {
@@ -117,7 +154,10 @@ async function loadRuntime(): Promise<RuntimeConfig> {
   } catch (error) {
     const code = (error as NodeJS.ErrnoException).code;
     if (code === 'ENOENT') {
-      return createDefaultRuntimeConfig(defaultTraceFile);
+      return {
+        runtime: createDefaultRuntimeConfig(defaultTraceFile),
+        migration: null,
+      };
     }
 
     throw error;
@@ -135,22 +175,41 @@ async function loadRuntime(): Promise<RuntimeConfig> {
     );
   }
 
-  const parsed = runtimeConfigSchema.safeParse(parsedJson);
-  if (!parsed.success) {
+  let migration: RuntimeConfigMigrationResult;
+  try {
+    migration = migrateRuntimeConfig(parsedJson);
+  } catch (error) {
+    const issues = typeof error === 'object'
+      && error !== null
+      && 'issues' in error
+      && Array.isArray((error as { issues?: unknown }).issues)
+      ? toValidationIssues(error as { issues: Array<{ path: Array<string | number>; message: string; code: string }> })
+      : [{
+          path: '<root>',
+          message: 'Unsupported runtime config shape.',
+          code: 'schema_invalid',
+        }];
+
     throw createValidationError(
       'cli.runtimeConfig',
       defaultValidationPolicy['cli.runtimeConfig'],
       `Runtime config at ${runtimeFile} failed schema validation.`,
-      toValidationIssues(parsed.error),
+      issues,
     );
   }
 
-  return parsed.data;
+  if (migration.migrated) {
+    await writeRuntimeAtomic(migration.runtimeConfig);
+  }
+
+  return {
+    runtime: migration.runtimeConfig,
+    migration,
+  };
 }
 
 async function saveRuntime(runtime: RuntimeConfig): Promise<void> {
-  const parsed = runtimeConfigSchema.parse(runtime);
-  await writeFile(runtimeFile, JSON.stringify(parsed, null, 2));
+  await writeRuntimeAtomic(runtime);
 }
 
 async function createHydratedConductor(runtime: RuntimeConfig) {
@@ -363,9 +422,164 @@ function defaultManifest(id: string): ModuleManifest {
   });
 }
 
+function sourcePortExists(runtime: RuntimeConfig, moduleId: string, port: string): boolean {
+  const module = runtime.modules[moduleId];
+  if (!module) {
+    return false;
+  }
+
+  return module.manifest.outputs.some((output) => output.name === port);
+}
+
+function targetInputExists(runtime: RuntimeConfig, moduleId: string, inputName: string): boolean {
+  const module = runtime.modules[moduleId];
+  if (!module) {
+    return false;
+  }
+
+  return module.manifest.inputs.some((input) => input.name === inputName);
+}
+
+async function runDoctor(runtime: RuntimeConfig): Promise<{ ok: boolean; issues: DoctorIssue[] }> {
+  const issues: DoctorIssue[] = [];
+  const moduleIds = new Set(Object.keys(runtime.modules));
+  const liveTools = new Map<string, Set<string>>();
+  const discoveryFailures = new Map<string, string>();
+
+  const conductor = createConductor({ validationPolicy: runtime.validationPolicy });
+  try {
+    for (const entry of Object.values(runtime.modules)) {
+      try {
+        await conductor.registerModule({
+          id: entry.id,
+          url: entry.url,
+          manifest: entry.manifest,
+          profile: entry.profile,
+          transportAdapterId: entry.transportAdapterId,
+        });
+      } catch (error) {
+        issues.push({
+          level: 'error',
+          moduleId: entry.id,
+          message: `Module registration failed for "${entry.id}".`,
+          remediation: error instanceof Error ? error.message : String(error),
+        });
+      }
+    }
+
+    for (const moduleId of moduleIds) {
+      try {
+        const discovered = await conductor.discoverCapabilities(moduleId);
+        const inventory = discovered[moduleId];
+        if (!inventory) {
+          discoveryFailures.set(moduleId, 'No inventory returned by module.');
+          continue;
+        }
+
+        liveTools.set(moduleId, new Set(inventory.tools.map((tool) => tool.name)));
+      } catch (error) {
+        discoveryFailures.set(moduleId, error instanceof Error ? error.message : String(error));
+      }
+    }
+  } finally {
+    await conductor.close();
+  }
+
+  if (moduleIds.size === 0) {
+    issues.push({
+      level: 'warn',
+      message: 'No modules are configured in runtime config.',
+      remediation: 'Run `mcp-canvas connect --id <id> --url <url>` to add at least one module.',
+    });
+  }
+
+  for (const [moduleId, persistedModule] of Object.entries(runtime.modules)) {
+    if (persistedModule.id !== moduleId) {
+      issues.push({
+        level: 'warn',
+        moduleId,
+        message: `Module key "${moduleId}" and persisted id "${persistedModule.id}" differ.`,
+        remediation: 'Normalize module key and id to avoid confusing routing behavior.',
+      });
+    }
+  }
+
+  for (const edge of runtime.wiring) {
+    if (!moduleIds.has(edge.from.moduleId)) {
+      issues.push({
+        level: 'error',
+        edgeId: edge.id,
+        moduleId: edge.from.moduleId,
+        message: `Source module "${edge.from.moduleId}" does not exist.`,
+        remediation: 'Recreate the missing module connection or remove this wiring edge.',
+      });
+      continue;
+    }
+
+    if (!sourcePortExists(runtime, edge.from.moduleId, edge.from.port)) {
+      issues.push({
+        level: 'error',
+        edgeId: edge.id,
+        moduleId: edge.from.moduleId,
+        message: `Source port "${edge.from.port}" is not declared in module outputs.`,
+        remediation: 'Update module manifest outputs or rewire from a valid output port.',
+      });
+    }
+
+    if (!moduleIds.has(edge.to.moduleId)) {
+      issues.push({
+        level: 'error',
+        edgeId: edge.id,
+        moduleId: edge.to.moduleId,
+        message: `Target module "${edge.to.moduleId}" does not exist.`,
+        remediation: 'Connect the target module first or remove the edge.',
+      });
+      continue;
+    }
+
+    const targetInput = targetInputExists(runtime, edge.to.moduleId, edge.to.arg);
+    if (!targetInput) {
+      issues.push({
+        level: 'warn',
+        edgeId: edge.id,
+        moduleId: edge.to.moduleId,
+        message: `Target arg "${edge.to.arg}" is not declared in module inputs.`,
+        remediation: 'Update module manifest inputs or confirm this edge targets the correct argument.',
+      });
+    }
+
+    const tools = liveTools.get(edge.to.moduleId);
+    if (!tools) {
+      const reason = discoveryFailures.get(edge.to.moduleId);
+      issues.push({
+        level: 'warn',
+        edgeId: edge.id,
+        moduleId: edge.to.moduleId,
+        message: `Could not verify target tool "${edge.to.tool}" from live capability discovery.`,
+        remediation: reason
+          ? `Capability discovery failed: ${reason}`
+          : 'Run module servers and rerun doctor to validate live tool inventory.',
+      });
+    } else if (!tools.has(edge.to.tool)) {
+      issues.push({
+        level: 'error',
+        edgeId: edge.id,
+        moduleId: edge.to.moduleId,
+        message: `Target tool "${edge.to.tool}" is not present in live capability inventory.`,
+        remediation: 'Rewire to a discovered tool name or reconnect the target module.',
+      });
+    }
+  }
+
+  return {
+    ok: issues.every((issue) => issue.level !== 'error'),
+    issues,
+  };
+}
+
 async function run(): Promise<void> {
   const [commandArg = 'help', ...args] = process.argv.slice(2);
-  const command = (['help', 'dev', 'probe', 'connect', 'wire', 'swap', 'trace'] as const)
+  const command = (['help', 'dev', 'probe', 'connect', 'wire', 'swap', 'trace', 'doctor'] as const)
     .find((entry) => entry === commandArg) as CommandName | undefined;
 
   if (!command) {
@@ -393,7 +607,11 @@ async function run(): Promise<void> {
     return;
   }
 
-  const runtime = await loadRuntime();
+  const runtimeLoad = await loadRuntime();
+  const runtime = runtimeLoad.runtime;
+  if (runtimeLoad.migration) {
+    emitMigrationSummary(runtimeLoad.migration);
+  }
   const flagsMode = runtime.validationPolicy['cli.flags'];
   const profileMode = runtime.validationPolicy['cli.profile'];
 
@@ -409,6 +627,21 @@ async function run(): Promise<void> {
       console.log('No trace file found yet.');
     }
 
+    return;
+  }
+
+  if (command === 'doctor') {
+    const report = await runDoctor(runtime);
+    console.log(JSON.stringify({
+      ok: report.ok,
+      runtimeFile,
+      moduleCount: Object.keys(runtime.modules).length,
+      wiringCount: runtime.wiring.length,
+      issues: report.issues,
+    }, null, 2));
+    if (!report.ok) {
+      process.exitCode = 1;
+    }
     return;
   }
 

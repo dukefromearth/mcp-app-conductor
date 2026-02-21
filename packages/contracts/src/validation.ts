@@ -8,6 +8,8 @@ export const validationBoundarySchema = z.enum([
   'cli.flags',
   'host.mountArgs',
   'host.wireInput',
+  'conductor.wiringEdge',
+  'conductor.eventPayload',
   'conductor.portSignal',
 ]);
 
@@ -17,6 +19,8 @@ export const validationPolicySchema = z.object({
   'cli.flags': validationModeSchema,
   'host.mountArgs': validationModeSchema,
   'host.wireInput': validationModeSchema,
+  'conductor.wiringEdge': validationModeSchema,
+  'conductor.eventPayload': validationModeSchema,
   'conductor.portSignal': validationModeSchema,
 });
 
@@ -26,6 +30,8 @@ export const defaultValidationPolicy = validationPolicySchema.parse({
   'cli.flags': 'enforce',
   'host.mountArgs': 'enforce',
   'host.wireInput': 'enforce',
+  'conductor.wiringEdge': 'enforce',
+  'conductor.eventPayload': 'warn',
   'conductor.portSignal': 'warn',
 });
 

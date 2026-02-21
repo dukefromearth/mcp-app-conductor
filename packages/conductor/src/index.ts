@@ -14,6 +14,8 @@ import {
   type EventEnvelope,
   type ModuleRuntimeProfile,
   type ValidationBoundary,
+  type ValidationMode,
+  type ValidationOutcome,
   type ValidationPolicy,
   type ValidationIssue,
   type SwapMode,
@@ -34,6 +36,7 @@ import type {
   RegisteredModule,
   SwapPlan,
   SwapRequest,
+  StoreMetrics,
   ValidationOutcomeInput,
 } from './types';
 import type { JsonlRecorder } from './trace/jsonl-recorder';
@@ -50,6 +53,10 @@ export interface Conductor {
   registerModule(request: ModuleRegistrationRequest): Promise<RegisteredModule>;
   discoverCapabilities(moduleId?: string): Promise<Record<string, CapabilityInventory>>;
   mountView(request: MountViewRequest): Promise<MountedViewResult>;
+  validateWiringEdge(
+    edge: Omit<WiringEdge, 'id' | 'contractVersion' | 'kind' | 'extensions'> & { id?: string },
+    state?: ConductorSnapshot,
+  ): ValidationOutcome[];
   connectPorts(
     edge: Omit<WiringEdge, 'id' | 'contractVersion' | 'kind' | 'extensions'> & { id?: string }
   ): WiringEdge;
@@ -58,6 +65,7 @@ export interface Conductor {
   reportValidationOutcome(outcome: ValidationOutcomeInput): void;
   subscribe(listener: ConductorEventListener): () => void;
   getState(): ConductorSnapshot;
+  getMetrics(): StoreMetrics;
   getTrace(limit?: number): EventEnvelope[];
   close(): Promise<void>;
 }
@@ -120,12 +128,76 @@ function actorForBoundary(boundary: ValidationBoundary): EventEnvelope['source']
   return 'system';
 }
 
+function createValidationOutcome(
+  boundary: ValidationBoundary,
+  mode: ValidationMode,
+  message: string,
+  issues: ValidationIssue[],
+): ValidationOutcome {
+  return validationOutcomeSchema.parse({
+    boundary,
+    mode,
+    ok: false,
+    message,
+    issues,
+  });
+}
+
+function schemaType(schema: unknown): string | undefined {
+  if (!schema || typeof schema !== 'object') {
+    return undefined;
+  }
+
+  const type = (schema as Record<string, unknown>).type;
+  return typeof type === 'string' ? type : undefined;
+}
+
+function areSchemasCompatible(
+  sourceSchema?: Record<string, unknown>,
+  targetSchema?: Record<string, unknown>,
+): boolean {
+  const left = schemaType(sourceSchema);
+  const right = schemaType(targetSchema);
+
+  if (!left || !right) {
+    return true;
+  }
+
+  if (left === right) {
+    return true;
+  }
+
+  const numerics = new Set(['number', 'integer']);
+  return numerics.has(left) && numerics.has(right);
+}
+
+function getToolArgSchema(tool: { inputSchema?: Record<string, unknown> }, arg: string): Record<string, unknown> | undefined {
+  const schema = tool.inputSchema;
+  if (!schema || typeof schema !== 'object') {
+    return undefined;
+  }
+
+  const properties = schema.properties;
+  if (!properties || typeof properties !== 'object') {
+    return undefined;
+  }
+
+  const fieldSchema = (properties as Record<string, unknown>)[arg];
+  if (!fieldSchema || typeof fieldSchema !== 'object') {
+    return undefined;
+  }
+
+  return fieldSchema as Record<string, unknown>;
+}
+
 export function createConductor(config: CreateConductorConfig = {}): Conductor {
-  const store = new ConductorStore();
+  const validationPolicy = validationPolicySchema.parse(config.validationPolicy ?? defaultValidationPolicy);
+  const store = new ConductorStore({
+    eventPayloadMode: validationPolicy['conductor.eventPayload'],
+  });
   const recorder = config.recorder;
   const moduleClients = new Map<string, ModuleClient>();
   const adapters = new Map<string, TransportAdapter>((config.adapters ?? []).map((adapter) => [adapter.id, adapter]));
-  const validationPolicy = validationPolicySchema.parse(config.validationPolicy ?? defaultValidationPolicy);
 
   function pushEvent(
     type: string,
@@ -150,14 +222,18 @@ export function createConductor(config: CreateConductorConfig = {}): Conductor {
     return event;
   }
 
-  function reportValidationOutcome(outcomeInput: ValidationOutcomeInput): void {
+  function emitValidationOutcome(outcomeInput: ValidationOutcomeInput, traceId?: string): void {
     const outcome = validationOutcomeSchema.parse(outcomeInput);
     const source = {
       actor: actorForBoundary(outcome.boundary),
       operation: `validation:${outcome.boundary}`,
     } as const;
 
-    pushEvent('validation.outcome', outcome, source, createId('trace'));
+    pushEvent('validation.outcome', outcome, source, traceId ?? createId('trace'));
+  }
+
+  function reportValidationOutcome(outcomeInput: ValidationOutcomeInput): void {
+    emitValidationOutcome(outcomeInput);
   }
 
   function getModule(moduleId: string): RegisteredModule {
@@ -327,9 +403,10 @@ export function createConductor(config: CreateConductorConfig = {}): Conductor {
     };
   }
 
-  function connectPorts(
-    edgeInput: Omit<WiringEdge, 'id' | 'contractVersion' | 'kind' | 'extensions'> & { id?: string }
-  ): WiringEdge {
+  function validateWiringEdge(
+    edgeInput: Omit<WiringEdge, 'id' | 'contractVersion' | 'kind' | 'extensions'> & { id?: string },
+    state = store.getState(),
+  ): ValidationOutcome[] {
     const edge = wiringEdgeSchema.parse({
       contractVersion: CONTRACT_VERSION,
       kind: 'conductor.wiringEdge',
@@ -337,11 +414,159 @@ export function createConductor(config: CreateConductorConfig = {}): Conductor {
       ...edgeInput,
       id: edgeInput.id ?? createId('edge'),
     });
+    const outcomes: ValidationOutcome[] = [];
+    const policyMode = validationPolicy['conductor.wiringEdge'];
+
+    const sourceModule = state.modules[edge.from.moduleId];
+    if (!sourceModule) {
+      outcomes.push(createValidationOutcome(
+        'conductor.wiringEdge',
+        'enforce',
+        `Source module "${edge.from.moduleId}" is not registered.`,
+        [{
+          path: `from.moduleId`,
+          message: 'Unknown source module.',
+          code: 'source_module_missing',
+        }],
+      ));
+      return outcomes;
+    }
+
+    const targetModule = state.modules[edge.to.moduleId];
+    if (!targetModule) {
+      outcomes.push(createValidationOutcome(
+        'conductor.wiringEdge',
+        'enforce',
+        `Target module "${edge.to.moduleId}" is not registered.`,
+        [{
+          path: `to.moduleId`,
+          message: 'Unknown target module.',
+          code: 'target_module_missing',
+        }],
+      ));
+      return outcomes;
+    }
+
+    const sourcePort = sourceModule.manifest.outputs.find((entry) => entry.name === edge.from.port);
+    if (!sourcePort) {
+      outcomes.push(createValidationOutcome(
+        'conductor.wiringEdge',
+        'enforce',
+        `Source port "${edge.from.port}" is not declared by module "${edge.from.moduleId}".`,
+        [{
+          path: 'from.port',
+          message: 'Unknown output port in source module manifest.',
+          code: 'source_port_missing',
+        }],
+      ));
+    }
+
+    const targetInventory = state.capabilityInventory[edge.to.moduleId];
+    if (!targetInventory) {
+      outcomes.push(createValidationOutcome(
+        'conductor.wiringEdge',
+        'warn',
+        `Target module "${edge.to.moduleId}" has no discovered capability inventory.`,
+        [{
+          path: 'to.moduleId',
+          message: 'Run capability discovery before wiring this edge.',
+          code: 'target_inventory_missing',
+        }],
+      ));
+    }
+
+    const targetTool = targetInventory?.tools.find((tool) => tool.name === edge.to.tool);
+    if (targetInventory && !targetTool) {
+      outcomes.push(createValidationOutcome(
+        'conductor.wiringEdge',
+        'enforce',
+        `Target tool "${edge.to.tool}" is not available on module "${edge.to.moduleId}".`,
+        [{
+          path: 'to.tool',
+          message: 'Unknown target tool in discovered capability inventory.',
+          code: 'target_tool_missing',
+        }],
+      ));
+      return outcomes;
+    }
+
+    const sourceSchema = edge.from.schema ?? sourcePort?.schema;
+    const targetSchema = edge.to.schema ?? (targetTool ? getToolArgSchema(targetTool, edge.to.arg) : undefined);
+
+    if (!areSchemasCompatible(sourceSchema, targetSchema)) {
+      outcomes.push(createValidationOutcome(
+        'conductor.wiringEdge',
+        policyMode,
+        `Schema mismatch for edge "${edge.id}" from ${edge.from.moduleId}:${edge.from.port} to ${edge.to.moduleId}:${edge.to.tool}(${edge.to.arg}).`,
+        [{
+          path: 'from.schema',
+          message: `Source type "${schemaType(sourceSchema) ?? 'unknown'}" does not match target type "${schemaType(targetSchema) ?? 'unknown'}".`,
+          code: 'schema_mismatch',
+        }],
+      ));
+    }
+
+    return outcomes;
+  }
+
+  function connectPorts(
+    edgeInput: Omit<WiringEdge, 'id' | 'contractVersion' | 'kind' | 'extensions'> & { id?: string }
+  ): WiringEdge {
+    const traceId = createId('trace');
+    const edge = wiringEdgeSchema.parse({
+      contractVersion: CONTRACT_VERSION,
+      kind: 'conductor.wiringEdge',
+      extensions: {},
+      ...edgeInput,
+      id: edgeInput.id ?? createId('edge'),
+    });
+    const outcomes = validateWiringEdge(edge, store.getState());
+    const failing = outcomes.filter((outcome) => !outcome.ok);
+
+    pushEvent(
+      'wiring.validate',
+      { edge, outcomes },
+      { actor: 'conductor', moduleId: edge.from.moduleId, operation: 'connectPorts' },
+      traceId,
+    );
+
+    if (failing.length > 0) {
+      const hasEnforcedFailure = failing.some((outcome) => outcome.mode === 'enforce');
+
+      for (const outcome of failing) {
+        emitValidationOutcome(outcome, traceId);
+      }
+
+      if (hasEnforcedFailure) {
+        pushEvent(
+          'wiring.reject',
+          { edge, outcomes: failing },
+          { actor: 'conductor', moduleId: edge.from.moduleId, operation: 'connectPorts' },
+          traceId,
+        );
+        throw new Error(`Wiring edge ${edge.id} failed validation.`);
+      }
+
+      pushEvent(
+        'wiring.warn',
+        { edge, outcomes: failing },
+        { actor: 'conductor', moduleId: edge.from.moduleId, operation: 'connectPorts' },
+        traceId,
+      );
+    }
 
     pushEvent(
       'wiring.connected',
       { edge },
       { actor: 'conductor', moduleId: edge.from.moduleId, operation: 'connectPorts' },
+      traceId,
+    );
+
+    pushEvent(
+      'wiring.accept',
+      { edge, outcomes },
+      { actor: 'conductor', moduleId: edge.from.moduleId, operation: 'connectPorts' },
+      traceId,
     );
 
     return edge;
@@ -431,6 +656,7 @@ export function createConductor(config: CreateConductorConfig = {}): Conductor {
 
   async function emitPortEvent(signal: PortSignal): Promise<void> {
     const validationMode = validationPolicy['conductor.portSignal'];
+    const operationTraceId = signal.traceId ?? createId('trace');
     const parsedSignal = portSignalSchema.safeParse(signal);
 
     if (!parsedSignal.success) {
@@ -442,7 +668,7 @@ export function createConductor(config: CreateConductorConfig = {}): Conductor {
         message: 'Port signal validation failed.',
         issues,
       });
-      reportValidationOutcome(outcome);
+      emitValidationOutcome(outcome, operationTraceId);
 
       if (validationMode === 'enforce') {
         throw new Error('Port signal validation failed.');
@@ -452,7 +678,7 @@ export function createConductor(config: CreateConductorConfig = {}): Conductor {
     }
 
     const validatedSignal = parsedSignal.data;
-    const traceId = validatedSignal.traceId ?? createId('trace');
+    const traceId = validatedSignal.traceId ?? operationTraceId;
 
     const event = pushEvent(
       'port.event',
@@ -469,7 +695,12 @@ export function createConductor(config: CreateConductorConfig = {}): Conductor {
       traceId,
     );
 
-    const actions = routePortEventToActions(event, store.getState().wiring);
+    const actions = routePortEventToActions(event, store.getState().wiring, {
+      mode: validationMode,
+      onValidationOutcome: (outcome) => {
+        emitValidationOutcome(outcome, traceId);
+      },
+    });
 
     for (const action of actions) {
       const client = await getOrCreateModuleClient(action.moduleId);
@@ -510,6 +741,10 @@ export function createConductor(config: CreateConductorConfig = {}): Conductor {
     return store.getState();
   }
 
+  function getMetrics(): StoreMetrics {
+    return store.getMetrics();
+  }
+
   function getTrace(limit = 100): EventEnvelope[] {
     const events = store.getState().events;
     return events.slice(Math.max(0, events.length - limit));
@@ -529,8 +764,10 @@ export function createConductor(config: CreateConductorConfig = {}): Conductor {
     swapModule,
     emitPortEvent,
     reportValidationOutcome,
+    validateWiringEdge,
     subscribe,
     getState,
+    getMetrics,
     getTrace,
     close,
   };
@@ -545,6 +782,7 @@ export type {
   MountedViewResult,
   PortSignal,
   RegisteredModule,
+  StoreMetrics,
   SwapPlan,
   SwapRequest,
   ValidationOutcomeInput,

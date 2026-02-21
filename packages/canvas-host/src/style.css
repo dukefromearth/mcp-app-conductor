@@ -89,7 +89,7 @@ h1 {
 
 .controls {
   display: grid;
-  grid-template-columns: repeat(5, minmax(220px, 1fr));
+  grid-template-columns: repeat(6, minmax(220px, 1fr));
   gap: 0.85rem;
 }
 
@@ -169,6 +169,46 @@ button:hover {
 
 .trace h2 {
   color: #ffffff;
+}
+
+.validation-status {
+  margin: 0;
+  font-size: 0.76rem;
+  color: var(--muted);
+}
+
+.validation-status[data-level='warn'] {
+  color: #8a5600;
+}
+
+.validation-status[data-level='error'] {
+  color: #9b1d1d;
+}
+
+.validation-list {
+  min-height: 64px;
+}
+
+.validation-list p {
+  margin: 0;
+  font-size: 0.72rem;
+  color: var(--muted);
+}
+
+.validation-list ul {
+  margin: 0;
+  padding-left: 1rem;
+  display: grid;
+  gap: 0.4rem;
+}
+
+.validation-list li {
+  font-size: 0.72rem;
+  line-height: 1.35;
+}
+
+.validation-list small {
+  color: var(--muted);
 }
 
 .canvas {

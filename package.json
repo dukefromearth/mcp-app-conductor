@@ -7,5 +7,8 @@
     "typecheck": "pnpm -r --filter \"./packages/**\" --if-present typecheck",
     "dev:host": "pnpm --filter @mcp-app-conductor/canvas-host dev",
     "dev:cli": "pnpm --filter @mcp-app-conductor/cli build && node ./packages/cli/dist/index.js dev"
+  },
+  "devDependencies": {
+    "dependency-cruiser": "^17.3.8"
   }
 }

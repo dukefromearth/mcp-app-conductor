@@ -1,0 +1,318 @@
+flowchart LR
+
+subgraph 0["packages"]
+subgraph 1["canvas-host"]
+subgraph 2["dist"]
+subgraph 3["assets"]
+4["index-CS53VVbi.js"]
+end
+end
+subgraph 5["src"]
+6["main.ts"]
+7["style.css"]
+end
+end
+subgraph Q["contracts"]
+subgraph R["dist"]
+S["index.d.ts"]
+T["artifacts.js"]
+Y["core.js"]
+Z["runtime-config.js"]
+10["validation.js"]
+3C["artifacts.d.ts"]
+3D["core.d.ts"]
+3E["index.js"]
+3F["runtime-config.d.ts"]
+3G["validation.d.ts"]
+end
+subgraph 3H["src"]
+3I["artifacts.ts"]
+3J["core.ts"]
+3K["validation.ts"]
+3L["index.ts"]
+3M["runtime-config.ts"]
+end
+end
+subgraph 11["conductor"]
+subgraph 12["dist"]
+13["index.d.ts"]
+subgraph 14["adapters"]
+15["pdf-context.d.ts"]
+end
+subgraph 16["runtime"]
+17["transport-adapter.d.ts"]
+2J["module-client.d.ts"]
+2K["swap.d.ts"]
+2L["wiring.d.ts"]
+end
+subgraph 18["trace"]
+19["jsonl-recorder.d.ts"]
+end
+1A["types.d.ts"]
+subgraph 1X["conductor"]
+subgraph 1Y["src"]
+subgraph 1Z["adapters"]
+20["pdf-context.d.ts"]
+end
+21["index.d.ts"]
+subgraph 22["runtime"]
+23["transport-adapter.d.ts"]
+27["module-client.d.ts"]
+29["swap.d.ts"]
+2A["wiring.d.ts"]
+end
+subgraph 24["trace"]
+25["jsonl-recorder.d.ts"]
+end
+26["types.d.ts"]
+subgraph 2B["state"]
+2C["reducer.d.ts"]
+2D["store.d.ts"]
+end
+end
+end
+subgraph 2E["contracts"]
+subgraph 2F["src"]
+2G["index.d.ts"]
+end
+end
+2H["mcp-app-conductor.cjs"]
+2I["mcp-app-conductor.js"]
+subgraph 2M["state"]
+2N["reducer.d.ts"]
+2O["store.d.ts"]
+end
+end
+subgraph 2P["src"]
+subgraph 2Q["adapters"]
+2R["pdf-context.ts"]
+end
+2S["index.ts"]
+subgraph 2T["runtime"]
+2U["module-client.ts"]
+2W["swap.ts"]
+2X["transport-adapter.ts"]
+2Y["wiring.ts"]
+end
+2V["types.ts"]
+subgraph 2Z["state"]
+30["store.ts"]
+31["reducer.ts"]
+end
+subgraph 32["trace"]
+33["jsonl-recorder.ts"]
+end
+end
+34["vite.config.ts"]
+end
+subgraph 1B["cli"]
+subgraph 1C["dist"]
+subgraph 1D["cli"]
+subgraph 1E["src"]
+1F["index.d.ts"]
+1G["index.js"]
+end
+end
+subgraph 1H["conductor"]
+subgraph 1I["src"]
+1J["index.d.ts"]
+1K["index.js"]
+end
+end
+subgraph 1L["contracts"]
+subgraph 1M["src"]
+1N["index.d.ts"]
+1P["index.js"]
+end
+end
+1Q["index.d.ts"]
+1R["index.js"]
+end
+subgraph 1V["src"]
+1W["index.ts"]
+end
+end
+end
+subgraph 8["node_modules"]
+subgraph 9[".pnpm"]
+subgraph A["@modelcontextprotocol+ext-apps@1.0.1_@modelcontextprotocol+sdk@1.26.0_zod@3.25.76__zod@3.25.76"]
+subgraph B["node_modules"]
+subgraph C["@modelcontextprotocol"]
+subgraph D["ext-apps"]
+subgraph E["dist"]
+subgraph F["src"]
+G["app-bridge.d.ts"]
+end
+end
+end
+end
+end
+end
+subgraph H["@modelcontextprotocol+sdk@1.26.0_zod@3.25.76"]
+subgraph I["node_modules"]
+subgraph J["@modelcontextprotocol"]
+subgraph K["sdk"]
+subgraph L["dist"]
+subgraph M["esm"]
+subgraph N["client"]
+O["index.js"]
+P["streamableHttp.js"]
+end
+28["types.js"]
+end
+end
+end
+end
+end
+end
+subgraph U["zod@3.25.76"]
+subgraph V["node_modules"]
+subgraph W["zod"]
+X["index.d.cts"]
+end
+end
+end
+subgraph 36["vite@7.3.1_@types+node@24.10.13_tsx@4.21.0"]
+subgraph 37["node_modules"]
+subgraph 38["vite"]
+subgraph 39["dist"]
+subgraph 3A["node"]
+3B["index.js"]
+end
+end
+end
+end
+end
+end
+end
+1O["zod"]
+subgraph 1S["fs"]
+1T["promises"]
+end
+1U["path"]
+35["url"]
+6-->7
+6-->S
+6-->G
+6-->O
+6-->P
+6-->13
+S-->T
+S-->Y
+S-->Z
+S-->10
+T-->Y
+T-->X
+Y-->X
+Z-->T
+Z-->Y
+Z-->10
+Z-->X
+10-->X
+13-->15
+13-->17
+13-->19
+13-->19
+13-->1A
+13-->S
+17-->S
+19-->S
+1A-->S
+1G-->S
+1G-->13
+1N-->1O
+1P-->1O
+1R-->S
+1R-->O
+1R-->P
+1R-->1T
+1R-->13
+1R-->1U
+1W-->S
+1W-->O
+1W-->P
+1W-->1T
+1W-->13
+1W-->1U
+21-->20
+21-->23
+21-->25
+21-->25
+21-->26
+21-->S
+23-->S
+25-->S
+26-->S
+27-->26
+27-->28
+29-->26
+29-->S
+2A-->26
+2A-->S
+2C-->26
+2C-->S
+2D-->26
+2D-->S
+2G-->1O
+2J-->1A
+2J-->28
+2K-->1A
+2K-->S
+2L-->1A
+2L-->S
+2N-->1A
+2N-->S
+2O-->1A
+2O-->S
+2S-->2R
+2S-->2U
+2S-->2W
+2S-->2X
+2S-->2X
+2S-->2Y
+2S-->30
+2S-->33
+2S-->33
+2S-->2V
+2S-->S
+2U-->2V
+2U-->O
+2U-->P
+2U-->28
+2V-->S
+2W-->2V
+2W-->S
+2X-->S
+2Y-->2V
+2Y-->S
+30-->2V
+30-->31
+30-->S
+30-->S
+31-->2V
+31-->S
+33-->S
+34-->1U
+34-->35
+34-->3B
+3C-->X
+3D-->X
+3E-->T
+3E-->Y
+3E-->Z
+3E-->10
+3F-->X
+3G-->X
+3I-->3J
+3I-->3K
+3I-->X
+3J-->X
+3K-->X
+3L-->3I
+3L-->3J
+3L-->3M
+3L-->3K
+3M-->3I
+3M-->3J
+3M-->3K
+3M-->X

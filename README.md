@@ -40,15 +40,17 @@ Composable scenarios using upstream MCP Apps examples (PDF + Say + Video + Trans
 ## Current implementation status (Feb 2026)
 
 - `packages/contracts`: runtime profile + swap + wiring + event-envelope contracts are live, plus Contract Spine v1 metadata and boundary validation contracts (`contractVersion`, `kind`, `extensions`, validation policy/outcome, runtime config schema).
-- `packages/conductor`: event-sourced runtime APIs are implemented (`register`, `discover`, `mount`, `wire`, `swap`, `emitPortEvent`, `trace`).
-- `packages/canvas-host`: browser host now connects to PDF/Say, mounts MCP Apps with AppBridge, shows inventory, wiring, and trace overlays.
+- `packages/conductor`: event-sourced runtime APIs are implemented (`register`, `discover`, `mount`, `validateWiringEdge`, `wire`, `swap`, `emitPortEvent`, `trace`) with trace-visible wiring decisions and payload validation outcomes.
+- `packages/canvas-host`: browser host now connects to PDF/Say, mounts MCP Apps with AppBridge, shows inventory/wiring/trace overlays, and surfaces host boundary validation in a visible panel with trace IDs.
 - `packages/cli`: operational commands are implemented:
   - `mcp-canvas probe`
   - `mcp-canvas dev`
   - `mcp-canvas connect --id --url --profile`
   - `mcp-canvas wire --from --to`
   - `mcp-canvas swap --from --to --mode auto`
+  - `mcp-canvas doctor`
   - `mcp-canvas trace --tail`
+  - runtime config auto-migration from legacy shape to Contract Spine v1 (atomic rewrite + warning summary)
 - `examples/proving-ground`: includes protocol probe, module profiles, and Scenario A (`read-listen`) script.
 
 ### Transport baseline
@@ -61,10 +63,10 @@ Session-oriented modules require a transport adapter and are rejected otherwise.
 - Required metadata on contract artifacts: `contractVersion`, `kind`, `extensions`.
 - Supported `contractVersion` major: `1` (semver string format).
 - Default validation policy is hybrid strict:
-  - enforce: `cli.runtimeConfig`, `cli.profile`, `cli.flags`, `host.mountArgs`, `host.wireInput`
-  - warn: `conductor.portSignal`
+  - enforce: `cli.runtimeConfig`, `cli.profile`, `cli.flags`, `host.mountArgs`, `host.wireInput`, `conductor.wiringEdge`
+  - warn: `conductor.eventPayload`, `conductor.portSignal`
 
-Migration note: existing profile/runtime JSON without Contract Spine v1 metadata will fail schema parsing and must be updated.
+Migration note: legacy `.mcp-canvas-runtime.json` is auto-migrated by CLI load path; profile JSON still requires Contract Spine v1 metadata and fails fast if invalid.
 
 ---
 
